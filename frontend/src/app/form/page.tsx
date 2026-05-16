@@ -26,16 +26,154 @@ interface ITRData {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const SRC: Record<string, string> = {
-  form16: "Form 16", bank_statement: "Bank stmt",
-  computed: "Computed", manual: "Manual", missing: "Missing", rag_inference: "AI",
+  form16: "Form 16", bank_statement: "Bank",
+  computed: "Computed", manual: "Manual",
+  missing: "Missing", rag_inference: "AI",
+  not_available: "N/A",
 };
 
 function rupee(v: number | undefined | null): string {
-  if (!v || v === 0) return "—";
+  if (v === undefined || v === null || v === 0) return "₹0";
   return `₹${Number(v).toLocaleString("en-IN")}`;
 }
 
-// ── Field Row ──────────────────────────────────────────────────────────────
+// ── Analytics Panel ─────────────────────────────────────────────────────────────
+
+function DonutChart({ segments }: { segments: {label: string; value: number; color: string}[] }) {
+  const total = segments.reduce((s, x) => s + Math.max(x.value, 0), 0);
+  if (total === 0) return <div className="text-xs text-slate-500 italic text-center py-4">No income data</div>;
+  const r = 52, cx = 64, cy = 64, circ = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <svg width="128" height="128" viewBox="0 0 128 128">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="18" />
+      {segments.map((seg, i) => {
+        const pct = Math.max(seg.value, 0) / total;
+        const dash = pct * circ;
+        const gap  = circ - dash;
+        const el = (
+          <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+            stroke={seg.color} strokeWidth="18"
+            strokeDasharray={`${dash} ${gap}`}
+            strokeDashoffset={-offset * circ}
+            style={{transform: "rotate(-90deg)", transformOrigin: "64px 64px"}}
+          />
+        );
+        offset += pct;
+        return el;
+      })}
+      <text x={cx} y={cy - 4} textAnchor="middle" fill="#e2e8f0" fontSize="9" fontWeight="600">GTI</text>
+      <text x={cx} y={cy + 10} textAnchor="middle" fill="#94a3b8" fontSize="8">{rupee(total)}</text>
+    </svg>
+  );
+}
+
+function AnalyticsPanel({ data, conf }: { data: Record<string, Record<string, number | string>>; conf: Record<string, {source: string; confidence: number; flagged: boolean}> }) {
+  const sal = data.salary_income  || {};
+  const os  = data.other_sources  || {};
+  const hp  = data.house_property || {};
+  const tc  = data.tax_computation || {};
+
+  const salAmt = Number(sal.taxable_salary || 0);
+  const fdAmt  = Number(os.fd_interest || 0);
+  const sbAmt  = Number(os.savings_bank_interest || 0);
+  const hpAmt  = Math.max(Number(hp.total_income_hp || 0), 0);
+  const gti    = Number(tc.gross_total_income || 0);
+  const taxLiab = Number(tc.total_tax_liability || 0);
+  const tds    = Number(tc.tds_deducted || 0);
+  const net    = Number(tc.refund || tc.tax_payable || 0);
+
+  // Coverage stats
+  const allConf = Object.values(conf);
+  const fromDocs   = allConf.filter(c => ["form16","bank_statement"].includes(c.source)).length;
+  const computed   = allConf.filter(c => c.source === "computed").length;
+  const na         = allConf.filter(c => c.source === "not_available").length;
+  const flagged    = allConf.filter(c => c.flagged).length;
+  const total      = allConf.length;
+
+  const donutSegs = [
+    {label: "Salary",    value: salAmt, color: "#2D9E9E"},
+    {label: "FD Int.",   value: fdAmt,  color: "#4B8BBE"},
+    {label: "SB Int.",   value: sbAmt,  color: "#708090"},
+    {label: "HP",        value: hpAmt,  color: "#8A9BA8"},
+  ];
+
+  // Waterfall bars
+  const maxW = Math.max(gti, 1);
+  const bars = [
+    {label: "Gross Income",  val: gti,     w: gti/maxW,     color: "bg-teal-700"},
+    {label: "Tax Liability", val: taxLiab, w: taxLiab/maxW, color: "bg-slate-600"},
+    {label: "TDS Deducted",  val: tds,     w: tds/maxW,     color: "bg-slate-500"},
+    {label: "Net (Ref/Pay)", val: net,     w: Math.abs(net)/maxW, color: net >= 0 ? "bg-emerald-700" : "bg-amber-700"},
+  ];
+
+  return (
+    <div className="glass-card mb-6 p-6 fade-in-up">
+      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">📊 Analytics Overview</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        {/* Income Breakdown Donut */}
+        <div>
+          <div className="text-xs text-slate-400 font-semibold mb-2">Income Breakdown</div>
+          <div className="flex items-center gap-4">
+            <DonutChart segments={donutSegs} />
+            <div className="space-y-1.5">
+              {donutSegs.map((s, i) => s.value > 0 && (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: s.color}} />
+                  <span className="text-slate-400">{s.label}</span>
+                  <span className="text-slate-200 font-mono ml-auto">{rupee(s.value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Tax Waterfall */}
+        <div>
+          <div className="text-xs text-slate-400 font-semibold mb-2">Tax Computation</div>
+          <div className="space-y-2">
+            {bars.map((b, i) => (
+              <div key={i}>
+                <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                  <span>{b.label}</span>
+                  <span className="font-mono text-slate-200">{rupee(b.val)}</span>
+                </div>
+                <div className="h-1.5 bg-slate-800/80 rounded-full overflow-hidden">
+                  <div className={`h-full ${b.color} rounded-full transition-all`} style={{width: `${Math.min(b.w * 100, 100)}%`}} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Field Coverage */}
+        <div>
+          <div className="text-xs text-slate-400 font-semibold mb-2">Field Coverage ({total} fields)</div>
+          <div className="space-y-2">
+            {[
+              {label: "From Documents", count: fromDocs, color: "bg-teal-600"},
+              {label: "Computed",       count: computed,  color: "bg-slate-500"},
+              {label: "Not Available",  count: na,        color: "bg-stone-600"},
+              {label: "Needs Review",   count: flagged,   color: "bg-red-700"},
+            ].map((r, i) => r.count > 0 && (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <div className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
+                <span className="text-slate-400 flex-1">{r.label}</span>
+                <span className="text-slate-200 font-mono text-right w-8">{r.count}</span>
+                <div className="w-16 h-1 bg-slate-800 rounded-full overflow-hidden">
+                  <div className={`h-full ${r.color} rounded-full`} style={{width: `${(r.count/total)*100}%`}} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Field Row ──────────────────────────────────────────────────────────────────────────
 
 function FR({
   label, path, value, conf, onEdit, indent = false,
@@ -44,10 +182,15 @@ function FR({
   conf?: FieldConf; onEdit: (f: string, l: string, v: number | string) => void;
   indent?: boolean;
 }) {
-  const pct = Math.round((conf?.confidence ?? 1) * 100);
-  const bar = pct >= 80 ? "bg-green-400" : pct >= 50 ? "bg-amber-400" : "bg-red-400";
-  const isNum = typeof value === "number";
-  const display = isNum ? rupee(value as number) : String(value || "—");
+  const isNA    = conf?.source === "not_available";
+  const pct     = isNA ? 0 : Math.round((conf?.confidence ?? 1) * 100);
+  const bar     = pct >= 80 ? "bg-teal-500" : pct >= 50 ? "bg-amber-400" : "bg-red-400";
+  const isNum   = typeof value === "number";
+  const display = isNA
+    ? "N/A"
+    : isNum
+      ? rupee(value as number)
+      : String(value || "—");
 
   return (
     <div className={`flex items-start gap-4 py-3 border-b border-white/5 last:border-0
@@ -61,11 +204,11 @@ function FR({
           )}
         </div>
         {conf?.explanation && (
-          <div className="text-xs text-slate-500 mt-0.5 truncate">{conf.explanation}</div>
+          <div className={`text-xs mt-0.5 truncate ${isNA ? "text-stone-500 italic" : "text-slate-500"}`}>{conf.explanation}</div>
         )}
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        {conf && (
+        {conf && !isNA && (
           <div className="w-20 flex items-center gap-1.5 hide-on-print">
             <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <div className={`h-full ${bar} rounded-full`} style={{ width: `${pct}%` }} />
@@ -74,16 +217,21 @@ function FR({
           </div>
         )}
         {conf?.source && (
-          <span className="text-[9px] uppercase font-bold tracking-wider text-blue-300/70 bg-blue-900/20 border border-blue-500/10 rounded px-1.5 py-0.5 hidden md:block">
+          <span className={`text-[9px] uppercase font-bold tracking-wider rounded px-1.5 py-0.5 hidden md:block ${
+            isNA ? "text-stone-500 bg-stone-900/20 border border-stone-600/10"
+                 : "text-teal-300/70 bg-teal-900/20 border border-teal-500/10"
+          }`}>
             {SRC[conf.source] || conf.source}
           </span>
         )}
-        <span className={`text-sm font-semibold w-32 text-right tabular-nums
-          ${(!value || value === 0) ? "text-slate-600" : "text-slate-100"}`}>
+        <span className={`text-sm font-semibold w-32 text-right tabular-nums ${
+          isNA ? "text-stone-600 italic text-xs" :
+          (!value || value === 0) ? "text-slate-600" : "text-slate-100"
+        }`}>
           {display}
         </span>
         <button onClick={() => onEdit(path, label, value)}
-          className="text-slate-600 hover:text-blue-400 transition-colors text-sm hide-on-print ml-1" title="Edit">✎</button>
+          className="text-slate-600 hover:text-teal-400 transition-colors text-sm hide-on-print ml-1" title="Edit">✎</button>
       </div>
     </div>
   );
@@ -104,9 +252,9 @@ function SC({ title, emoji, children, total, note }: {
       </div>
       <div className="px-6 py-1">{children}</div>
       {total && (
-        <div className="px-6 py-3 border-t border-white/10 bg-blue-900/10 flex justify-between items-center">
-          <span className="text-xs font-bold text-blue-300 uppercase tracking-wider">{total.label}</span>
-          <span className="text-base font-bold text-blue-100 tabular-nums">{rupee(total.value)}</span>
+        <div className="px-6 py-3 border-t border-white/10 bg-teal-900/10 flex justify-between items-center">
+          <span className="text-xs font-bold text-teal-300 uppercase tracking-wider">{total.label}</span>
+          <span className="text-base font-bold text-teal-100 tabular-nums">{rupee(total.value)}</span>
         </div>
       )}
     </div>
@@ -148,21 +296,21 @@ function EditModal({ field, label, value, sessionId, onClose, onSaved }: {
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass-card w-full max-w-md p-8">
         <div className="font-bold text-lg text-slate-100 mb-1">{label}</div>
-        <div className="text-xs text-blue-400 mb-5 font-mono">{field}</div>
+        <div className="text-xs text-teal-400 mb-5 font-mono">{field}</div>
         <input type="text" value={val} onChange={e => setVal(e.target.value)}
           className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 mb-3
-            focus:outline-none focus:border-blue-500 transition-colors" />
+            focus:outline-none focus:border-teal-500 transition-colors" />
         <input type="text" placeholder="Reason for change" value={reason}
           onChange={e => setReason(e.target.value)}
           className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 mb-5
-            focus:outline-none focus:border-blue-500 transition-colors" />
+            focus:outline-none focus:border-teal-500 transition-colors" />
         <div className="flex gap-3">
           <button onClick={onClose}
             className="flex-1 py-3 rounded-xl border border-white/10 text-slate-300 text-sm hover:bg-white/5 transition-colors">
             Cancel
           </button>
           <button onClick={save} disabled={saving}
-            className="flex-1 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            className="flex-1 py-3 rounded-xl bg-teal-700 text-white text-sm font-semibold hover:bg-teal-600 disabled:opacity-50 transition-colors">
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -214,8 +362,8 @@ function FormPageInner() {
 
   return (
     <div className="min-h-screen pt-20 pb-16 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-teal-700/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-slate-600/5 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="max-w-4xl mx-auto px-4 relative z-10">
 
@@ -229,7 +377,7 @@ function FormPageInner() {
             <div className="text-slate-400 mt-1.5 text-sm">
               AY {String(pi.assessment_year || "2024-25")} · New Tax Regime 2025
               {pi.first_name && <span className="ml-3 text-slate-300 font-medium">· {[pi.first_name, pi.middle_name, pi.last_name].filter(Boolean).join(" ")}</span>}
-              {pi.pan && <span className="ml-2 font-mono text-blue-400 text-xs">{String(pi.pan)}</span>}
+              {pi.pan && <span className="ml-2 font-mono text-teal-400 text-xs">{String(pi.pan)}</span>}
             </div>
           </div>
           <div className="flex gap-2 mt-4 md:mt-0 flex-wrap hide-on-print">
@@ -238,7 +386,7 @@ function FormPageInner() {
             <button onClick={() => window.open(`${API}/api/pipeline/export/${sessionId}?format=excel`, "_blank")}
               className="px-4 py-2 rounded-xl bg-green-700/80 text-white text-sm font-semibold hover:bg-green-600 transition-colors">↓ Excel</button>
             <a href={`${API}/api/pipeline/export/${sessionId}`} target="_blank"
-              className="px-4 py-2 rounded-xl bg-blue-700/80 text-white text-sm font-semibold hover:bg-blue-600 transition-colors">↓ JSON</a>
+              className="px-4 py-2 rounded-xl bg-slate-700/80 text-white text-sm font-semibold hover:bg-slate-600 transition-colors">↓ JSON</a>
           </div>
         </div>
 
@@ -249,7 +397,7 @@ function FormPageInner() {
               <div key={i} className={`glass-card px-5 py-3 text-sm flex flex-col rounded-xl border
                 ${f.severity === "error"   ? "border-red-500/30 text-red-200 bg-red-900/10"
                 : f.severity === "warning" ? "border-amber-500/30 text-amber-200 bg-amber-900/10"
-                : "border-blue-500/30 text-blue-200 bg-blue-900/10"}`}>
+                : "border-teal-500/30 text-teal-200 bg-teal-900/10"}`}>
                 <span><b className="uppercase text-xs tracking-wider mr-2">{f.severity}</b>{f.message}</span>
                 {f.suggestion && <span className="text-xs mt-1 opacity-70 border-t border-white/10 pt-1 font-mono">→ {f.suggestion}</span>}
               </div>
@@ -257,10 +405,13 @@ function FormPageInner() {
           </div>
         )}
 
+        {/* Analytics Panel */}
+        <AnalyticsPanel data={form} conf={cf as Record<string, {source: string; confidence: number; flagged: boolean}>} />
+
         {/* Regime explanation */}
         {exp.regime && (
-          <div className="glass-card mb-5 px-5 py-3 text-sm text-slate-300 border border-blue-500/20 rounded-xl">
-            <span className="font-bold text-blue-400 mr-2">ℹ Regime:</span>{exp.regime}
+          <div className="glass-card mb-5 px-5 py-3 text-sm text-slate-300 border border-teal-500/20 rounded-xl">
+            <span className="font-bold text-teal-400 mr-2">ℹ Regime:</span>{exp.regime}
           </div>
         )}
 
@@ -268,18 +419,18 @@ function FormPageInner() {
         <SC title="Part A — Personal Information" emoji="🪪">
           <FR label="PAN"              path="personal_info.pan"        value={String(pi.pan || "")}        conf={F("personal_info.pan")}        onEdit={E} />
           <FR label="First name"       path="personal_info.first_name"  value={String(pi.first_name || "")}  conf={F("personal_info.first_name")}  onEdit={E} />
-          <FR label="Middle name"      path="personal_info.middle_name" value={String(pi.middle_name || "")} onEdit={E} />
-          <FR label="Last / Surname"   path="personal_info.last_name"   value={String(pi.last_name || "")}   onEdit={E} />
-          <FR label="Date of birth"    path="personal_info.dob"         value={String(pi.dob || "")}         onEdit={E} />
-          <FR label="Aadhaar number"   path="personal_info.aadhaar"     value={String(pi.aadhaar || "")}     onEdit={E} />
-          <FR label="Mobile"           path="personal_info.mobile"      value={String(pi.mobile || "")}      onEdit={E} />
-          <FR label="Email"            path="personal_info.email"       value={String(pi.email || "")}       onEdit={E} />
-          <FR label="Address (flat/door/block)" path="personal_info.address_flat"   value={String(pi.address_flat || "")}   onEdit={E} />
-          <FR label="Road / Street"    path="personal_info.address_street" value={String(pi.address_street || "")} onEdit={E} />
-          <FR label="City"             path="personal_info.address_city"  value={String(pi.address_city || "")}  onEdit={E} />
-          <FR label="State"            path="personal_info.address_state" value={String(pi.address_state || "")} onEdit={E} />
-          <FR label="PIN code"         path="personal_info.address_pin"   value={String(pi.address_pin || "")}   onEdit={E} />
-          <FR label="Bank account no." path="personal_info.bank_account_number" value={String(pi.bank_account_number || pi.bank_account || "")} onEdit={E} />
+          <FR label="Middle name"      path="personal_info.middle_name" value={String(pi.middle_name || "")} conf={F("personal_info.middle_name")} onEdit={E} />
+          <FR label="Last / Surname"   path="personal_info.last_name"   value={String(pi.last_name || "")}   conf={F("personal_info.last_name")}   onEdit={E} />
+          <FR label="Date of birth"    path="personal_info.dob"         value={String(pi.dob || "")}         conf={F("personal_info.dob")}         onEdit={E} />
+          <FR label="Aadhaar number"   path="personal_info.aadhaar"     value={String(pi.aadhaar || "")}     conf={F("personal_info.aadhaar")}     onEdit={E} />
+          <FR label="Mobile"           path="personal_info.mobile"      value={String(pi.mobile || "")}      conf={F("personal_info.mobile")}      onEdit={E} />
+          <FR label="Email"            path="personal_info.email"       value={String(pi.email || "")}       conf={F("personal_info.email")}       onEdit={E} />
+          <FR label="Address (flat/door/block)" path="personal_info.address_flat"   value={String(pi.address_flat || "")}   conf={F("personal_info.address_flat")}   onEdit={E} />
+          <FR label="Road / Street"    path="personal_info.address_street" value={String(pi.address_street || "")} conf={F("personal_info.address_street")} onEdit={E} />
+          <FR label="City"             path="personal_info.address_city"  value={String(pi.address_city || "")}  conf={F("personal_info.address_city")}  onEdit={E} />
+          <FR label="State"            path="personal_info.address_state" value={String(pi.address_state || "")} conf={F("personal_info.address_state")} onEdit={E} />
+          <FR label="PIN code"         path="personal_info.address_pin"   value={String(pi.address_pin || "")}   conf={F("personal_info.address_pin")}   onEdit={E} />
+          <FR label="Bank account no." path="personal_info.bank_account_number" value={String(pi.bank_account_number || pi.bank_account || "")} conf={F("personal_info.bank_account_number")} onEdit={E} />
           <FR label="IFSC code"        path="personal_info.bank_ifsc"    value={String(pi.bank_ifsc || "")}    onEdit={E} />
           <FR label="Bank name"        path="personal_info.bank_name"    value={String(pi.bank_name || "")}    onEdit={E} />
         </SC>
@@ -431,8 +582,8 @@ function FormPageInner() {
         {/* Action buttons */}
         <div className="flex flex-col md:flex-row items-center justify-center gap-4 hide-on-print">
           <a href={`/chat?session=${sessionId}`}
-            className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-full
-              text-white font-bold text-base shadow-lg hover:shadow-purple-500/30 transition-all transform hover:-translate-y-0.5">
+            className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-teal-700 to-teal-600 rounded-full
+              text-white font-bold text-base shadow-lg hover:shadow-teal-500/20 transition-all transform hover:-translate-y-0.5">
             🤖 <span>Ask Tax AI</span>
           </a>
           <button onClick={() => window.open(`${API}/api/pipeline/export/${sessionId}?format=excel`, "_blank")}

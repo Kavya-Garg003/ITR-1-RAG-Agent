@@ -33,3 +33,6 @@ uploads/
 knowledge-base/rag_output/
 knowledge-base/vector_store/
 knowledge-base/pdfs/
+
+# Parse cache (auto-created at runtime, contains user PII)
+uploads/cache/

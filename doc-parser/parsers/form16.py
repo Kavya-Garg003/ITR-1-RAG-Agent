@@ -3,11 +3,16 @@ Form 16 Parser (Part A + Part B)
 ==================================
 Extracts salary, TDS, deductions from Form 16 PDF.
 Handles both text-based and table-based Form 16 layouts.
+
+Key stability fix: PDF hash cache ensures same document always returns
+identical numbers, regardless of LLM non-determinism.
 """
 
 from __future__ import annotations
 import re
 import json
+import hashlib
+from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
@@ -15,6 +20,9 @@ try:
     import pdfplumber
 except ImportError:
     pdfplumber = None
+
+# Cache directory (relative to project root)
+_CACHE_DIR = Path(__file__).parent.parent.parent / "uploads" / "cache"
 
 
 # ── Output schema ──────────────────────────────────────────────────────────────
@@ -74,6 +82,90 @@ class Form16Data:
     parse_confidence:      float = 0.0   # 0.0–1.0
     raw_text_snippet:      str   = ""
     warnings:              list  = field(default_factory=list)
+
+
+# ── Cache utilities ────────────────────────────────────────────────────────────
+
+def _pdf_hash(pdf_path: str) -> str:
+    """SHA256 hash of PDF bytes for stable cache keys."""
+    h = hashlib.sha256()
+    with open(pdf_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]  # 16 hex chars is plenty
+
+
+def _load_cache(cache_key: str) -> Optional[Form16Data]:
+    """Return cached Form16Data if available."""
+    try:
+        cache_file = _CACHE_DIR / f"{cache_key}_form16.json"
+        if cache_file.exists():
+            with open(cache_file, encoding="utf-8") as f:
+                d = json.load(f)
+            result = Form16Data()
+            for k, v in d.items():
+                if hasattr(result, k):
+                    setattr(result, k, v)
+            print(f"[Form16] Cache hit ({cache_key}) — returning cached parse result.")
+            return result
+    except Exception as e:
+        print(f"[Form16] Cache read error: {e}")
+    return None
+
+
+def _save_cache(cache_key: str, result: Form16Data):
+    """Persist parse result to cache."""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file = _CACHE_DIR / f"{cache_key}_form16.json"
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(asdict(result), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Form16] Cache write error: {e}")
+
+
+# ── Numeric validation ─────────────────────────────────────────────────────────
+
+def _validate_and_fix(result: Form16Data) -> Form16Data:
+    """
+    Post-parse numeric sanity checks.
+    Fixes common LLM extraction errors without re-parsing.
+    """
+    # Rule 1: gross_salary should equal sum of components when components are present
+    components_sum = result.salary_as_per_17_1 + result.perquisites_17_2 + result.profits_17_3
+    if components_sum > 0:
+        if result.gross_salary == 0:
+            result.gross_salary = components_sum
+            result.warnings.append("gross_salary derived from 17(1)+17(2)+17(3) components.")
+        elif abs(result.gross_salary - components_sum) > 0.01 * max(result.gross_salary, components_sum):
+            # Components sum differs from stated gross by >1% — trust the sum
+            result.warnings.append(
+                f"gross_salary mismatch: stated={result.gross_salary:,.0f}, "
+                f"components_sum={components_sum:,.0f}. Using components_sum."
+            )
+            result.gross_salary = components_sum
+
+    # Rule 2: standard deduction cap (₹50,000 for AY2024-25, ₹75,000 for AY2025-26)
+    if result.standard_deduction_16ia > 75000:
+        result.warnings.append(
+            f"standard_deduction_16ia {result.standard_deduction_16ia} exceeds ₹75,000 cap — capped."
+        )
+        result.standard_deduction_16ia = 75000.0
+
+    # Rule 3: TDS cannot exceed gross salary (extreme sanity check)
+    if result.tds_deducted_form16 > result.gross_salary > 0:
+        result.warnings.append(
+            f"tds_deducted_form16 ({result.tds_deducted_form16}) > gross_salary ({result.gross_salary}) — likely parse error. Using total_tds_deposited."
+        )
+        if result.total_tds_deposited > 0:
+            result.tds_deducted_form16 = result.total_tds_deposited
+
+    # Rule 4: 80C family caps
+    if result.sec_80c_claimed > 150000:
+        result.warnings.append(f"80C claimed {result.sec_80c_claimed} exceeds ₹1,50,000 — capped.")
+        result.sec_80c_claimed = 150000.0
+
+    return result
 
 
 # ── Label patterns (works for TRACES standard format) ─────────────────────────
@@ -140,7 +232,6 @@ def _extract_field(patterns: list[str], text: str) -> Optional[str]:
 def _extract_tds_quarters(text: str) -> tuple[float, float, float, float]:
     """Extract quarterly TDS from TRACES Part A table."""
     q = [0.0, 0.0, 0.0, 0.0]
-    # Pattern: Q1 / Q2 / Q3 / Q4 rows or columns
     for i, label in enumerate(["Q1", "Q2", "Q3", "Q4"]):
         m = re.search(rf"{label}.*?([\d,]+\.?\d*)", text, re.IGNORECASE)
         if m:
@@ -168,13 +259,67 @@ def _compute_derived_form16(result: Form16Data):
         result.tds_deducted_form16 = result.total_tds_deposited
 
 
+# ── LLM extraction prompt ──────────────────────────────────────────────────────
+
+_LLM_SYSTEM = """You are an expert Indian tax document parser specializing in Form 16.
+Extract details into STRICT JSON. Return ONLY raw JSON — no markdown, no explanation.
+
+CRITICAL RULES:
+1. Extract ONLY values ACTUALLY PRINTED in the document text. Do NOT infer or compute.
+2. If a field is not in the text, return 0.0 for numbers, null for strings.
+3. 'gross_salary' = line labelled 'Gross Salary' or 'Total of (a)+(b)+(c)'. It is usually the sum of 17(1)+17(2)+17(3).
+4. Numbers in Indian format: '8,50,000' = 850000. Strip commas before returning.
+5. Return clean floats, not strings with commas.
+
+Required JSON keys (ALL required, use 0.0/null for missing):
+{
+  "employer_name": "string or null",
+  "employer_tan": "string or null",
+  "employer_pan": "string or null",
+  "employee_pan": "string or null",
+  "employee_name": "string or null",
+  "assessment_year": "string or null",
+  "period_from": "string or null",
+  "period_to": "string or null",
+  "total_tds_deposited": 0.0,
+  "gross_salary": 0.0,
+  "salary_as_per_17_1": 0.0,
+  "perquisites_17_2": 0.0,
+  "profits_17_3": 0.0,
+  "hra_10_13a": 0.0,
+  "lta_10_10": 0.0,
+  "total_exempt_10": 0.0,
+  "standard_deduction_16ia": 0.0,
+  "entertainment_16ii": 0.0,
+  "professional_tax_16iii": 0.0,
+  "income_under_salary": 0.0,
+  "sec_80c_claimed": 0.0,
+  "sec_80ccc_claimed": 0.0,
+  "sec_80ccd_1_claimed": 0.0,
+  "sec_80ccd_2_claimed": 0.0,
+  "sec_80d_claimed": 0.0,
+  "total_vi_a_claimed": 0.0,
+  "taxable_income_form16": 0.0,
+  "tax_payable_form16": 0.0,
+  "rebate_87a_form16": 0.0,
+  "tds_deducted_form16": 0.0
+}"""
+
+
 def parse_form16(pdf_path: str) -> Form16Data:
     """
     Parse Form 16 PDF and return structured Form16Data.
     Supports TRACES-generated and employer-generated formats.
+    Uses SHA256 cache to guarantee deterministic results for same file.
     """
     if pdfplumber is None:
         raise ImportError("pdfplumber required: pip install pdfplumber")
+
+    # ── Check cache first ─────────────────────────────────────────────────────
+    cache_key = _pdf_hash(pdf_path)
+    cached = _load_cache(cache_key)
+    if cached is not None:
+        return cached
 
     result = Form16Data()
     full_text = ""
@@ -190,39 +335,33 @@ def parse_form16(pdf_path: str) -> Form16Data:
 
     result.raw_text_snippet = full_text[:500]
 
-    # ── LLM-Powered Structured Extraction ──────────────────────────────────────────
+    # ── LLM-Powered Structured Extraction ─────────────────────────────────────
     from .pdf_utils import pdf_to_structured_text
     structured_content = pdf_to_structured_text(pdf_path)
-    
+
     if len(structured_content.strip()) > 100:
         print("[Form16] Using Structured LLM-on-Text parsing...")
         from shared.llm_client import complete_with_system
-        
-        prompt = f"Extract all Form 16 tax details from this structured text (Markdown tables included):\n\n{structured_content[:20000]}"
-        system_prompt = (
-            "You are an expert Indian tax document parser. "
-            "Extract details into strict JSON. Return ONLY raw JSON. "
-            "IMPORTANT: 'Gross Salary' is usually listed as 'Salary as per provisions contained in section 17(1)'. "
-            "Keys: employer_name, employer_tan, employer_pan, employee_pan, employee_name, assessment_year, "
-            "period_from, period_to, total_tds_deposited, gross_salary, salary_as_per_17_1, "
-            "perquisites_17_2, profits_17_3, hra_10_13a, total_exempt_10, "
-            "standard_deduction_16ia, entertainment_16ii, professional_tax_16iii, income_under_salary, "
-            "sec_80c_claimed, sec_80ccc_claimed, sec_80ccd_1_claimed, sec_80ccd_2_claimed, sec_80d_claimed, "
-            "total_vi_a_claimed, taxable_income_form16, tax_payable_form16, rebate_87a_form16, tds_deducted_form16. "
-            "Use 0.0 for missing numeric fields."
+
+        prompt = (
+            f"Extract all Form 16 tax details from this structured text (Markdown tables included).\n"
+            f"REMEMBER: Extract only what is printed. gross_salary is Sec 17(1)+17(2)+17(3).\n\n"
+            f"{structured_content[:20000]}"
         )
 
         def validate_llm_text(ans_str: str) -> bool:
             try:
-                ans_str = ans_str.replace("```json", "").replace("```", "").strip()
-                data = json.loads(ans_str)
-                # Success if we find either Gross Salary OR Total TDS (minimum evidence of parsing)
-                return float(str(data.get("gross_salary", 0)).replace(",", "")) > 0 or \
-                       float(str(data.get("total_tds_deposited", 0)).replace(",", "")) > 0
-            except: return False
+                clean = ans_str.replace("```json", "").replace("```", "").strip()
+                data = json.loads(clean)
+                gs = float(str(data.get("gross_salary", 0)).replace(",", ""))
+                s171 = float(str(data.get("salary_as_per_17_1", 0)).replace(",", ""))
+                tds = float(str(data.get("total_tds_deposited", 0)).replace(",", ""))
+                return gs > 0 or s171 > 0 or tds > 0
+            except:
+                return False
 
         try:
-            ans = complete_with_system(system_prompt, prompt, validate_fn=validate_llm_text)
+            ans = complete_with_system(_LLM_SYSTEM, prompt, validate_fn=validate_llm_text)
             ans = ans.replace("```json", "").replace("```", "").strip()
             data = json.loads(ans)
             for k, v in data.items():
@@ -231,26 +370,33 @@ def parse_form16(pdf_path: str) -> Form16Data:
                         try:
                             clean_v = str(v).replace(",", "").replace(" ", "").strip()
                             setattr(result, k, float(clean_v) if clean_v else 0.0)
-                        except: pass
+                        except:
+                            pass
                     else:
                         setattr(result, k, str(v).strip())
             result.parse_confidence = 1.0
         except Exception as e:
             print(f"[Form16] LLM-on-Text failed: {e}")
 
+    # ── Compute derived fields and validate ───────────────────────────────────
     _compute_derived_form16(result)
+    result = _validate_and_fix(result)
 
-    # ── Vision Fallback (Only if Text Parsing failed to find Salary) ────────────────
+    # ── Vision Fallback (Only if Text Parsing failed to find Salary) ──────────
     if result.gross_salary == 0:
         print("[Form16] Gross Salary is still 0. Falling back to Vision AI (OCR)...")
         vision_result = _fallback_vision_form16(pdf_path)
         if vision_result and vision_result.gross_salary > 0:
+            _validate_and_fix(vision_result)
+            _save_cache(cache_key, vision_result)
             return vision_result
-            
+
     # Final cross-check: if gross salary is 0 but we have income under salary, use that
     if result.gross_salary == 0 and result.income_under_salary > 0:
         result.gross_salary = result.income_under_salary + result.standard_deduction_16ia
 
+    # ── Save to cache ─────────────────────────────────────────────────────────
+    _save_cache(cache_key, result)
     return result
 
 
@@ -258,9 +404,8 @@ def _fallback_vision_form16(pdf_path: str) -> Optional[Form16Data]:
     import fitz
     import base64
     from shared.llm_client import complete_vision
-    
+
     try:
-        import traceback
         doc = fitz.open(pdf_path)
         b64_images = []
         # Support longer Form 16s where Part B might be on page 3-5
@@ -268,46 +413,30 @@ def _fallback_vision_form16(pdf_path: str) -> Optional[Form16Data]:
             pix = doc[i].get_pixmap(dpi=120)
             b64_images.append(base64.b64encode(pix.tobytes("jpeg")).decode("utf-8"))
         doc.close()
-        
-        system_prompt = (
-            "You are an expert Indian tax document parser. "
-            "Extract Form 16 details into strict JSON matching the requested keys. "
-            "Return ONLY raw JSON, no markdown, no explanation. "
-            "Keys: employer_name, employer_tan, employer_pan, employee_pan, employee_name, assessment_year, "
-            "period_from, period_to, tds_q1, tds_q2, tds_q3, tds_q4, total_tds_deposited, gross_salary, "
-            "salary_as_per_17_1, perquisites_17_2, profits_17_3, hra_10_13a, lta_10_10, total_exempt_10, "
-            "standard_deduction_16ia, entertainment_16ii, professional_tax_16iii, income_under_salary, "
-            "sec_80c_claimed, sec_80ccc_claimed, sec_80ccd_1_claimed, sec_80ccd_2_claimed, sec_80d_claimed, "
-            "total_vi_a_claimed, taxable_income_form16, tax_payable_form16, rebate_87a_form16, tds_deducted_form16. "
-            "Use 0.0 for missing numeric fields, null for missing strings."
-        )
-        
+
+        vision_system = _LLM_SYSTEM + "\nThis is a scanned/image PDF. Extract from the visual content."
+
         def validate_form16_json(ans_str: str) -> bool:
             try:
-                # Clean and parse JSON
                 clean_ans = ans_str.replace("```json", "").replace("```", "").strip()
                 data = json.loads(clean_ans)
-                # We expect gross_salary to be non-zero for a valid Form 16 Part B
                 gs = float(str(data.get("gross_salary", 0)).replace(",", ""))
                 if gs > 0:
                     return True
-                # Also check constituent fields if gross_salary is 0
                 s171 = float(str(data.get("salary_as_per_17_1", 0)).replace(",", ""))
-                if s171 > 0:
-                    return True
-                return False
+                return s171 > 0
             except:
                 return False
 
         ans = complete_vision(
             "Extract Form 16 data as JSON. CRITICAL: Do NOT miss the Gross Salary (Sec 17(1)) usually found in Part B.",
             b64_images,
-            system=system_prompt,
+            system=vision_system,
             validate_fn=validate_form16_json
         )
         ans = ans.replace("```json", "").replace("```", "").strip()
         data = json.loads(ans)
-        
+
         result = Form16Data()
         for k, v in data.items():
             if hasattr(result, k) and v is not None:
@@ -319,11 +448,11 @@ def _fallback_vision_form16(pdf_path: str) -> Optional[Form16Data]:
                         pass
                 else:
                     setattr(result, k, str(v))
-                    
+
         _compute_derived_form16(result)
-        
+
         result.parse_confidence = 0.95
-        result.warnings.append("Parsed using Vision AI Fallback (OpenRouter/Gemma-3).")
+        result.warnings.append("Parsed using Vision AI Fallback.")
         return result
     except Exception as e:
         print(f"[Form16 Vision Fallback Error] {e}")

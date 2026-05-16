@@ -37,20 +37,69 @@ AY_NAMESPACE  = "AY2024-25"    # change per assessment year
 VECTOR_STORE.mkdir(exist_ok=True)
 
 
-# ── Load chunks ───────────────────────────────────────────────────────────────
+# ── Load chunks (auto-discovers ALL sources) ─────────────────────────────────
 def load_chunks(path: Path) -> list[dict]:
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Chunks file not found: {path}\n"
-            "Run scraper.py first to generate chunks."
-        )
-    chunks = []
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                chunks.append(json.loads(line))
-    print(f"Loaded {len(chunks)} chunks from {path}")
+    """
+    Auto-discover and merge ALL chunk files from multiple source directories.
+    Sources: rag_output/chunks/ (web), rag_output/pdf_chunks/ (PDFs), rag_output/ (combined).
+    Deduplicates by chunk_id so re-running never double-embeds.
+    """
+    # Directories to search (order matters for priority)
+    search_dirs = [
+        path.parent.parent / "rag_output" / "chunks",         # web scraped
+        path.parent.parent / "rag_output" / "pdf_chunks",      # PDF ingested
+        path.parent.parent / "rag_output" / "combined",        # pre-combined
+        path.parent,                                            # top-level rag_output
+    ]
+
+    chunks: list[dict] = []
+    seen_ids: set[str] = set()
+    source_counts: dict[str, int] = {}
+
+    for d in search_dirs:
+        if not d.exists():
+            continue
+        jsonl_files = sorted(d.glob("*.jsonl"))
+        for f in jsonl_files:
+            added = 0
+            with open(f, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        cid = chunk.get("chunk_id", "") or str(len(chunks))
+                        if cid not in seen_ids:
+                            seen_ids.add(cid)
+                            chunks.append(chunk)
+                            added += 1
+                    except json.JSONDecodeError:
+                        pass
+            if added:
+                label = "PDF" if "pdf" in str(f).lower() else "Web"
+                source_counts[label] = source_counts.get(label, 0) + added
+                print(f"  + {f.name}: {added} chunks ({label})")
+
+    if not chunks:
+        # Final fallback: try the original path directly
+        if path.exists():
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        chunks.append(json.loads(line))
+            print(f"Loaded {len(chunks)} chunks from {path} (fallback)")
+        else:
+            raise FileNotFoundError(
+                f"No chunk files found in any source directory.\n"
+                f"Run: python knowledge-base/scraper.py   (for web content)\n"
+                f"     python knowledge-base/pdf_ingester.py  (for PDF content)"
+            )
+
+    web_count = source_counts.get("Web", 0)
+    pdf_count = source_counts.get("PDF", 0)
+    print(f"\nLoaded {len(chunks)} total chunks: Web={web_count}, PDF={pdf_count} (deduplicated)")
     return chunks
 
 

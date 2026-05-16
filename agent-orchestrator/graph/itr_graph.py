@@ -233,12 +233,38 @@ def node_fill_form(state: AgentState) -> dict:
     total_savings_interest = 0.0
     total_fd_interest      = 0.0
     total_bank_tds         = 0.0
+    total_salary_credits   = 0.0
 
     for bank in bank_docs:
         d = bank["data"]
         total_savings_interest += float(d.get("total_savings_interest", 0) or 0)
         total_fd_interest      += float(d.get("total_fd_interest", 0) or 0)
         total_bank_tds         += float(d.get("total_tds_deducted", 0) or 0)
+        total_salary_credits   += float(d.get("total_salary_credits", 0) or 0)
+
+        # ── Personal info from bank statement header ────────────────────────
+        if not form.personal_info.bank_account_number and d.get("account_number"):
+            form.personal_info.bank_account_number = str(d["account_number"])
+            sf("personal_info.bank_account_number", form.personal_info.bank_account_number,
+               "bank_statement", 0.8, "Account number from bank statement header")
+        if not form.personal_info.bank_ifsc and d.get("ifsc_code"):
+            form.personal_info.bank_ifsc = str(d["ifsc_code"])
+            sf("personal_info.bank_ifsc", form.personal_info.bank_ifsc,
+               "bank_statement", 0.8, "IFSC code from bank statement header")
+        if not form.personal_info.bank_name and d.get("bank_name"):
+            form.personal_info.bank_name = str(d["bank_name"])
+            sf("personal_info.bank_name", form.personal_info.bank_name,
+               "bank_statement", 0.8, "Bank name from bank statement header")
+        # If no name from Form 16, try bank statement holder name
+        if not form.personal_info.first_name and d.get("name"):
+            raw_name = str(d["name"]).strip()
+            parts = raw_name.split()
+            if parts:
+                form.personal_info.first_name = parts[0]
+                if len(parts) > 1:
+                    form.personal_info.last_name = parts[-1]
+                sf("personal_info.first_name", form.personal_info.first_name,
+                   "bank_statement", 0.7, f"Name from bank statement: {raw_name}")
 
     form.other_sources.savings_bank_interest = total_savings_interest
     form.other_sources.fd_interest           = total_fd_interest
@@ -252,11 +278,7 @@ def node_fill_form(state: AgentState) -> dict:
         sf("other_sources.fd_interest", total_fd_interest, "bank_statement", 0.75,
            f"FD interest ₹{total_fd_interest:,.0f} — fully taxable under Other Sources.")
 
-    # 80TTA from savings interest (new regime: technically 0, but store for display)
-    # Under strict 2025 new regime, 80TTA is not deductible — store for info
     form.deductions.sec_80tta = min(total_savings_interest, 10000)
-
-    # Store bank TDS for TDS2 schedule
     form.tax_computation.tds_from_bank = total_bank_tds
 
     # ── Gross Total Income ────────────────────────────────────────────────────
@@ -272,11 +294,12 @@ def node_fill_form(state: AgentState) -> dict:
        f"+ OS ₹{form.other_sources.total_other_sources:,.0f}")
 
     audit.append({
-        "timestamp": datetime.utcnow().isoformat(),
-        "node":      "fill_form",
-        "action":    f"Mapped {len(docs)} document(s) to ITR-1 fields",
-        "doc_count": len(docs),
-        "gti":       gti,
+        "timestamp":          datetime.utcnow().isoformat(),
+        "node":               "fill_form",
+        "action":             f"Mapped {len(docs)} document(s) to ITR-1 fields",
+        "doc_count":          len(docs),
+        "gti":                gti,
+        "bank_salary_credits": total_salary_credits,
     })
 
     return {
@@ -389,6 +412,19 @@ def node_validate(state: AgentState) -> dict:
              "Both 80TTA and 80TTB claimed. 80TTB is exclusively for senior citizens.",
              "Senior citizens (60+): use 80TTB (max ₹50,000). Others: use 80TTA (max ₹10,000).")
 
+    # ── Cross-document salary consistency check ────────────────────────────
+    audit_data = state.get("audit_trail", [])
+    bank_salary = next((a.get("bank_salary_credits", 0) for a in reversed(audit_data)
+                        if "bank_salary_credits" in a), 0)
+    form16_gross = sal.get("gross_salary", 0)
+    if bank_salary > 0 and form16_gross > 0:
+        diff_pct = abs(bank_salary - form16_gross) / max(bank_salary, form16_gross)
+        if diff_pct > 0.40:
+            flag("salary_income.gross_salary", "warning",
+                 f"Bank salary credits (₹{bank_salary:,.0f}) differ from Form 16 gross salary "
+                 f"(₹{form16_gross:,.0f}) by {diff_pct*100:.0f}%. Verify the correct figure.",
+                 "Bank credits may include arrears or non-salary payments. Form 16 is authoritative.")
+
     audit = list(state.get("audit_trail", []))
     audit.append({"timestamp": datetime.utcnow().isoformat(), "node": "validate",
                   "action": f"Validation: {len(flags)} flag(s).",
@@ -401,29 +437,86 @@ def node_validate(state: AgentState) -> dict:
 
 # ── Node 4: Score Confidence ──────────────────────────────────────────────────
 
+# Complete list of every field path the frontend renders
+_ALL_FORM_PATHS = [
+    # Personal info
+    "personal_info.pan", "personal_info.first_name", "personal_info.middle_name",
+    "personal_info.last_name", "personal_info.dob", "personal_info.aadhaar",
+    "personal_info.mobile", "personal_info.email",
+    "personal_info.address_flat", "personal_info.address_street",
+    "personal_info.address_city", "personal_info.address_state", "personal_info.address_pin",
+    "personal_info.bank_account_number", "personal_info.bank_ifsc", "personal_info.bank_name",
+    # Salary
+    "salary_income.salary_as_per_17_1", "salary_income.perquisites_17_2", "salary_income.profits_17_3",
+    "salary_income.gross_salary", "salary_income.allowances_exempt_10_13a",
+    "salary_income.allowances_exempt_10_10", "salary_income.allowances_exempt_other",
+    "salary_income.standard_deduction_16ia", "salary_income.entertainment_allowance_16ii",
+    "salary_income.professional_tax_16iii", "salary_income.taxable_salary",
+    # House property
+    "house_property.annual_value", "house_property.municipal_tax_paid",
+    "house_property.net_annual_value", "house_property.standard_deduction_30pct",
+    "house_property.interest_on_loan_24b",
+    # Other sources
+    "other_sources.savings_bank_interest", "other_sources.fd_interest",
+    "other_sources.recurring_deposit", "other_sources.family_pension",
+    "other_sources.dividends", "other_sources.other_income",
+    # Deductions
+    "deductions.sec_80ccd_2", "deductions.sec_80c", "deductions.sec_80ccc",
+    "deductions.sec_80ccd_1", "deductions.sec_80d", "deductions.sec_80e",
+    "deductions.sec_80tta", "deductions.sec_80ttb", "deductions.sec_80u",
+    # Tax computation
+    "tax_computation.gross_total_income", "tax_computation.taxable_income",
+    "tax_computation.tax_before_rebate", "tax_computation.rebate_87a",
+    "tax_computation.tax_after_rebate", "tax_computation.surcharge",
+    "tax_computation.health_education_cess", "tax_computation.total_tax_liability",
+    "tax_computation.tds_deducted", "tax_computation.tds_from_bank",
+    "tax_computation.advance_tax_paid", "tax_computation.self_assessment_tax",
+    "tax_computation.tax_payable", "tax_computation.refund",
+    # TDS
+    "tds_details.0.employer_name", "tds_details.0.employer_tan",
+    "tds_details.0.tds_deducted", "tds_details.0.tds_claimed",
+]
+
+
 def node_score_confidence(state: AgentState) -> dict:
     scores    = state.get("confidence_scores", {})
     form_data = state["itr1_form"]
 
+    # Ensure every rendered field has an entry — use "not_available" for missing
+    for path in _ALL_FORM_PATHS:
+        if path not in scores:
+            scores[path] = {
+                "confidence":  0.0,
+                "source":      "not_available",
+                "explanation": "Not found in uploaded documents — enter manually if applicable.",
+                "flagged":     False,
+                "value":       None,
+            }
+
+    # Critical fields that ARE missing get flagged
     CRITICAL = [
-        "salary_income.gross_salary",
-        "salary_income.taxable_salary",
-        "tax_computation.gross_total_income",
-        "tax_computation.total_tax_liability",
+        "salary_income.gross_salary", "salary_income.taxable_salary",
+        "tax_computation.gross_total_income", "tax_computation.total_tax_liability",
         "tds_details.0.tds_deducted",
     ]
     for f in CRITICAL:
-        if f not in scores:
-            scores[f] = {"confidence": 0.3, "source": "missing",
-                         "explanation": "Field not found in uploaded documents — requires manual entry.",
-                         "flagged": True}
+        if scores.get(f, {}).get("source") in ("not_available", "missing", None):
+            scores[f]["flagged"] = True
+            scores[f]["confidence"] = 0.3
+            scores[f]["source"] = "missing"
+            scores[f]["explanation"] = "Critical field not found in documents — requires manual entry."
 
-    all_c = [v["confidence"] for v in scores.values()]
+    all_c = [v["confidence"] for v in scores.values() if v.get("source") != "not_available"]
     avg   = sum(all_c) / len(all_c) if all_c else 0
 
     audit = list(state.get("audit_trail", []))
-    audit.append({"timestamp": datetime.utcnow().isoformat(), "node": "score_confidence",
-                  "average_confidence": round(avg, 2), "flagged": sum(1 for v in scores.values() if v.get("flagged"))})
+    audit.append({
+        "timestamp": datetime.utcnow().isoformat(),
+        "node": "score_confidence",
+        "average_confidence": round(avg, 2),
+        "flagged": sum(1 for v in scores.values() if v.get("flagged")),
+        "not_available": sum(1 for v in scores.values() if v.get("source") == "not_available"),
+    })
 
     form_data["confidence_scores"] = scores
     return {"itr1_form": form_data, "confidence_scores": scores,

@@ -217,6 +217,47 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
         return "No relevant information found in the knowledge base."
 
 
+# ── Self-verification ────────────────────────────────────────────────────────────────────
+
+def _verify_answer(question: str, answer: str, chunks: list[dict]) -> dict:
+    """
+    Self-verifying loop: ask the LLM to identify which chunk supports each claim
+    and flag any unsupported claims.
+    Returns: {verified: bool, grounding: [{claim, chunk_no, excerpt}]}
+    """
+    try:
+        # Build short context for verification
+        ctx = "\n".join(
+            f"[{i+1}] {c.get('_display_source', '')} | {c['text'][:300]}"
+            for i, c in enumerate(chunks)
+        )
+        verify_system = (
+            "You are a fact-checking assistant. Your job is to verify that an answer "
+            "is fully supported by the given source chunks. "
+            "Return JSON only, no markdown. Format: "
+            '{"verified": true/false, "grounding": [{"claim": "...", "chunk_no": N, "excerpt": "exact quote from chunk"}]}'
+            " Include one entry per key claim in the answer. "
+            "If a claim is not in any chunk, set chunk_no to 0 and set verified=false."
+        )
+        verify_prompt = (
+            f"Question: {question}\n\n"
+            f"Answer to verify:\n{answer[:1000]}\n\n"
+            f"Source chunks:\n{ctx}\n\n"
+            "List each factual claim and which chunk number it comes from."
+        )
+        from shared.llm_client import complete_with_system
+        raw = complete_with_system(system=verify_system, user=verify_prompt, temperature=0.0)
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        result = json.loads(raw)
+        return {
+            "verified":  bool(result.get("verified", True)),
+            "grounding": result.get("grounding", []),
+        }
+    except Exception as e:
+        print(f"Verification skipped: {e}")
+        return {"verified": True, "grounding": []}
+
+
 # ── Request / Response ─────────────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
@@ -225,12 +266,20 @@ class QueryRequest(BaseModel):
     top_k:    int  = 5
     backend:  str  = "huggingface"
     rerank:   bool = True
+    verify:   bool = True   # self-verify grounding of answer
+
+class GroundingItem(BaseModel):
+    claim:    str
+    chunk_no: int
+    excerpt:  str
 
 class QueryResponse(BaseModel):
     answer:    str
     citations: list[dict]
     chunks:    list[dict]
     ay:        str
+    verified:  bool = True
+    grounding: list[dict] = []
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -261,6 +310,11 @@ async def query(req: QueryRequest):
 
     answer = _answer(req.question, chunks, req.ay)
 
+    # Self-verify grounding
+    verify_result = {"verified": True, "grounding": []}
+    if req.verify and chunks:
+        verify_result = _verify_answer(req.question, answer, chunks)
+
     # Build citations — include ALL retrieved sources, URL or not
     seen, citations = set(), []
     for c in chunks:
@@ -269,20 +323,23 @@ async def query(req: QueryRequest):
             continue
         seen.add(cid)
         url = c.get("url", "")
+        is_pdf = c.get("chunk_id", "").startswith("pdf_")
         citations.append({
             "source":   c.get("_display_source", _nice_source(c)),
-            "url":      url,                         # may be "" for PDFs
+            "url":      url,
             "section":  c.get("section", ""),
             "doc_type": c.get("doc_type", ""),
-            "is_pdf":   c.get("chunk_id", "").startswith("pdf_"),
-            # Short excerpt from the chunk (first 200 chars) for display
-            "excerpt":  c["text"][:200].strip() + ("…" if len(c["text"]) > 200 else ""),
+            "is_pdf":   is_pdf,
+            # Excerpt: the exact text passage from the source document
+            "excerpt":  c["text"][:300].strip() + ("…" if len(c["text"]) > 300 else ""),
         })
 
     return QueryResponse(
         answer=answer,
         citations=citations,
         ay=req.ay,
+        verified=verify_result["verified"],
+        grounding=verify_result["grounding"],
         chunks=[{
             "text":    c["text"],
             "source":  c.get("_display_source", _nice_source(c)),

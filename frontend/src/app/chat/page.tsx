@@ -8,19 +8,23 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface Citation {
-  source:  string;
-  url:     string;
-  section: string;
+  source:   string;
+  url:      string;
+  section:  string;
+  excerpt?: string;
+  is_pdf?:  boolean;
 }
 
 type Role = "user" | "assistant" | "system";
 
 interface Message {
-  id:        string;
-  role:      Role;
-  content:   string;
+  id:         string;
+  role:       Role;
+  content:    string;
   citations?: Citation[];
-  loading?:  boolean;
+  loading?:   boolean;
+  verified?:  boolean;
+  grounding?: Array<{claim: string; chunk_no: number; excerpt: string}>;
 }
 
 // ── Suggested questions ─────────────────────────────────────────────────────
@@ -40,21 +44,32 @@ function CitationList({ citations }: { citations: Citation[] }) {
   if (!citations.length) return null;
   return (
     <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
-      <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">Citations & Reasoning Sources</div>
+      <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">Sources &amp; Evidence</div>
       {citations.map((c, i) => (
-        <a
-          key={i}
-          href={c.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-start gap-2 text-xs text-blue-400 hover:text-blue-300 group bg-white/5 p-2 rounded-lg border border-white/5 hover:border-blue-500/30 transition-all"
-        >
-          <span className="shrink-0 text-slate-500 group-hover:text-blue-400 mt-0.5">↗</span>
-          <span>
-            <span className="font-semibold">{c.source}</span>
-            {c.section && <span className="text-slate-400 font-mono text-[10px] ml-1 block mt-0.5">SEC: {c.section}</span>}
-          </span>
-        </a>
+        <div key={i} className="rounded-lg border border-white/5 bg-white/3 overflow-hidden">
+          <div className="flex items-start gap-2 px-3 py-2">
+            <span className="shrink-0 text-slate-400 mt-0.5">{c.is_pdf ? '📄' : '🌐'}</span>
+            <div className="flex-1 min-w-0">
+              {c.url ? (
+                <a href={c.url} target="_blank" rel="noopener noreferrer"
+                   className="text-xs font-semibold text-teal-400 hover:text-teal-300 truncate block">
+                  {c.source} ↗
+                </a>
+              ) : (
+                <span className="text-xs font-semibold text-slate-300 truncate block">{c.source}</span>
+              )}
+              {c.section && <span className="text-[10px] text-slate-500 font-mono block mt-0.5">§ {c.section}</span>}
+            </div>
+            {c.is_pdf && (
+              <span className="shrink-0 text-[9px] bg-amber-900/30 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold">PDF</span>
+            )}
+          </div>
+          {c.excerpt && (
+            <div className="px-3 pb-2 text-[11px] text-slate-400 italic border-t border-white/5 pt-2 leading-relaxed">
+              &ldquo;{c.excerpt}&rdquo;
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -75,25 +90,34 @@ function MessageBubble({ msg }: { msg: Message }) {
     <div className={`flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       {/* Avatar */}
       <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-lg
-        ${isUser ? "bg-gradient-to-br from-blue-500 to-blue-700 text-white" : "bg-gradient-to-br from-purple-500 to-indigo-600 text-white"}`}>
+        ${isUser ? "bg-gradient-to-br from-teal-600 to-teal-800 text-white" : "bg-gradient-to-br from-slate-600 to-slate-800 text-white"}`}>
         {isUser ? "U" : "AI"}
       </div>
 
       {/* Bubble */}
       <div className={`max-w-[85%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-lg
         ${isUser
-          ? "bg-blue-600 text-white rounded-tr-sm"
+          ? "bg-teal-800/70 text-white rounded-tr-sm border border-teal-700/40"
           : "glass-card text-slate-200 rounded-tl-sm border border-white/10"}`}>
 
         {msg.loading ? (
           <div className="flex gap-2 items-center py-2 h-6">
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            <span className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="w-1.5 h-1.5 bg-teal-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
           </div>
         ) : (
           <>
-            {/* Render newlines */}
+            {/* Verified badge */}
+            {!isUser && msg.verified !== undefined && (
+              <div className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mb-2 ${
+                msg.verified
+                  ? "bg-emerald-900/30 text-emerald-400 border border-emerald-500/20"
+                  : "bg-amber-900/30 text-amber-400 border border-amber-500/20"
+              }`}>
+                {msg.verified ? "✓ Verified" : "⚠ Unverified — review answer"}
+              </div>
+            )}
             <div className="whitespace-pre-wrap font-medium">{msg.content}</div>
             {!isUser && msg.citations && (
               <CitationList citations={msg.citations} />
@@ -174,6 +198,8 @@ function ChatPageInner() {
         role:      "assistant",
         content:   data.answer || "Sorry, I couldn't get an answer. Please try again.",
         citations: data.citations || [],
+        verified:  data.verified,
+        grounding: data.grounding || [],
       };
 
       setMessages(prev => prev.filter(m => m.id !== "loading").concat(aiMsg));

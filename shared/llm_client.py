@@ -40,30 +40,41 @@ log = logging.getLogger(__name__)
 
 
 # ── Provider config ────────────────────────────────────────────────────────────
+# ORDER MATTERS: First provider that succeeds is used.
+# ✓ Groq: FREE tier — 500K tokens/day, 14,400 req/day. Most reliable.
+# ✓ OpenRouter :free models — genuinely $0.00, confirmed May 2026.
 
 PROVIDERS = [
     {
-        "name":     "openrouter-gemini-1-5-flash",
-        "label":    "OpenRouter Gemini 1.5 Flash (free)",
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key":  lambda: os.getenv("OPENROUTER_API_KEY", ""),
-        "model":    "google/gemini-flash-1.5-8b",
+        "name":     "groq-llama-3-3-70b",
+        "label":    "Groq Llama-3.3-70B (free, 500K tok/day)",
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key":  lambda: os.getenv("GROQ_API_KEY", ""),
+        "model":    "llama-3.3-70b-versatile",
         "max_tokens": 4000,
     },
     {
         "name":     "groq-llama-4-scout",
-        "label":    "Groq Llama-4 Scout 17B",
+        "label":    "Groq Llama-4 Scout 17B (free)",
         "base_url": "https://api.groq.com/openai/v1",
         "api_key":  lambda: os.getenv("GROQ_API_KEY", ""),
         "model":    "meta-llama/llama-4-scout-17b-16e-instruct",
         "max_tokens": 4000,
     },
     {
-        "name":     "openrouter-llama-3-3-70b",
-        "label":    "OpenRouter Llama 3.3 70B (free)",
+        "name":     "openrouter-llama-3-3-70b-free",
+        "label":    "OpenRouter Llama-3.3-70B :free ($0.00)",
         "base_url": "https://openrouter.ai/api/v1",
         "api_key":  lambda: os.getenv("OPENROUTER_API_KEY", ""),
         "model":    "meta-llama/llama-3.3-70b-instruct:free",
+        "max_tokens": 4000,
+    },
+    {
+        "name":     "openrouter-mistral-free",
+        "label":    "OpenRouter Mistral 7B :free ($0.00)",
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key":  lambda: os.getenv("OPENROUTER_API_KEY", ""),
+        "model":    "mistralai/mistral-7b-instruct:free",
         "max_tokens": 4000,
     },
 ]
@@ -183,29 +194,32 @@ def complete_vision(
 
     vision_providers = [
         {
-            "name":     "openrouter-gemini-1-5-flash",
-            "label":    "OpenRouter Gemini 1.5 Flash (free)",
-            "base_url": "https://openrouter.ai/api/v1",
-            "api_key":  lambda: os.getenv("OPENROUTER_API_KEY", ""),
-            "model":    "google/gemini-flash-1.5-8b",
-            "max_tokens": 2048,
-        },
-        {
-            "name":     "groq-llama-4-scout",
-            "label":    "Groq Llama 4 Scout 17B Vision",
+            # Groq Llama-4 Scout supports vision natively
+            "name":     "groq-llama-4-scout-vision",
+            "label":    "Groq Llama-4 Scout Vision (free)",
             "base_url": "https://api.groq.com/openai/v1",
             "api_key":  lambda: os.getenv("GROQ_API_KEY", ""),
             "model":    "meta-llama/llama-4-scout-17b-16e-instruct",
             "max_tokens": 2048,
         },
         {
-            "name":     "openrouter-llama-3-2-vision",
-            "label":    "OpenRouter Llama 3.2 11B Vision (free)",
+            # OpenRouter: Llama 3.2 11B Vision is confirmed :free
+            "name":     "openrouter-llama-3-2-vision-free",
+            "label":    "OpenRouter Llama-3.2-11B Vision :free",
             "base_url": "https://openrouter.ai/api/v1",
             "api_key":  lambda: os.getenv("OPENROUTER_API_KEY", ""),
             "model":    "meta-llama/llama-3.2-11b-vision-instruct:free",
             "max_tokens": 2048,
-        }
+        },
+        {
+            # Fallback: Groq Llama-3.3 (text only — strips images gracefully)
+            "name":     "groq-llama-3-3-text",
+            "label":    "Groq Llama-3.3-70B text fallback (free)",
+            "base_url": "https://api.groq.com/openai/v1",
+            "api_key":  lambda: os.getenv("GROQ_API_KEY", ""),
+            "model":    "llama-3.3-70b-versatile",
+            "max_tokens": 2048,
+        },
     ]
 
     return _try_providers(messages, temperature, providers or vision_providers, validate_fn=validate_fn)
@@ -313,8 +327,8 @@ if __name__ == "__main__":
     print("Available providers:")
     for p in PROVIDERS:
         key = p["api_key"]()
-        status = "✓ key set" if key else "✗ no key"
-        print(f"  {p['label']:45} {status}")
+        status = "[OK] key set" if key else "[--] no key"
+        print(f"  {p['label'][:45]:45} {status}")
 
     print("\nSending test prompt...")
     try:
