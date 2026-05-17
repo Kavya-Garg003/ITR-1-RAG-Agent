@@ -181,10 +181,10 @@ async def chat_query(req: ChatRequest):
         question += form_ctx
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.post(
                 f"{RAG_URL}/query",
-                json={"question": question, "ay": req.ay, "top_k": 5}
+                json={"question": question, "ay": req.ay, "top_k": 5, "verify": True}
             )
             resp.raise_for_status()
             rag_result = resp.json()
@@ -194,6 +194,8 @@ async def chat_query(req: ChatRequest):
             "answer":    rag_result.get("answer", ""),
             "citations": rag_result.get("citations", []),
             "chunks":    rag_result.get("chunks", []),
+            "verified":  rag_result.get("verified", True),
+            "grounding": rag_result.get("grounding", []),
         }
     except httpx.HTTPError as e:
         raise HTTPException(502, f"RAG service unavailable: {e}")

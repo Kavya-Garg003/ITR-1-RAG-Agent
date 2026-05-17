@@ -59,23 +59,38 @@ def load_chunks(path: Path) -> list[dict]:
     for d in search_dirs:
         if not d.exists():
             continue
-        jsonl_files = sorted(d.glob("*.jsonl"))
-        for f in jsonl_files:
+        # Handle BOTH .jsonl (line-by-line) and .json (array) formats
+        all_files = sorted(list(d.glob("*.jsonl")) + list(d.glob("*.json")))
+        for f in all_files:
             added = 0
-            with open(f, encoding="utf-8") as fh:
-                for line in fh:
+            try:
+                raw = f.read_text(encoding="utf-8")
+                # Try JSON array first (scraper output format)
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    file_chunks = parsed
+                else:
+                    file_chunks = [parsed]
+            except json.JSONDecodeError:
+                # Fall back to JSONL (one JSON object per line)
+                file_chunks = []
+                for line in raw.splitlines():
                     line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        chunk = json.loads(line)
-                        cid = chunk.get("chunk_id", "") or str(len(chunks))
-                        if cid not in seen_ids:
-                            seen_ids.add(cid)
-                            chunks.append(chunk)
-                            added += 1
-                    except json.JSONDecodeError:
-                        pass
+                    if line:
+                        try:
+                            file_chunks.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
+
+            for chunk in file_chunks:
+                if not isinstance(chunk, dict) or "text" not in chunk:
+                    continue
+                cid = chunk.get("chunk_id", "") or f"{f.stem}_{len(chunks)}"
+                if cid not in seen_ids:
+                    seen_ids.add(cid)
+                    chunks.append(chunk)
+                    added += 1
+
             if added:
                 label = "PDF" if "pdf" in str(f).lower() else "Web"
                 source_counts[label] = source_counts.get(label, 0) + added
