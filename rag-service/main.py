@@ -4,6 +4,7 @@ RAG Service — FastAPI
 FAISS + MMR + cross-encoder reranking + LLM answer generation.
 Fixes: PDF sources now appear in citations even without a URL.
        Answer format now includes quoted paragraph from source.
+       Both Groq and OpenRouter used via best_of_n for quality answers.
 """
 
 import os, json, re
@@ -33,8 +34,8 @@ def _nice_source(chunk: dict) -> str:
     """Return a clean document name from chunk metadata."""
     raw = chunk.get("source", "") or ""
 
-    # Already a good name (from web scraper)
-    if raw and raw != "PDF Document":
+    # Already a good name (not generic)
+    if raw and raw != "PDF Document" and raw != "Tax Reference Document":
         return raw
 
     # Try to derive from chunk_id  e.g. pdf_cbdt_e_filing_itr_1_validation_rules_ay__0000_xxx
@@ -70,9 +71,18 @@ def _nice_source(chunk: dict) -> str:
 def _citation_id(chunk: dict) -> str:
     """Unique identifier for deduplication — URL if available, else chunk_id prefix."""
     url = chunk.get("url", "")
+    cid = chunk.get("chunk_id", "")
     if url:
         return url
-    # For PDFs: use normalised source name as dedup key
+    # For PDFs: use chunk_id stem for dedup (group same-pdf chunks)
+    if cid.startswith("pdf_"):
+        # pdf_a1961_43_0003_abc123 → pdf_a1961_43
+        parts = cid.split("_")
+        # Find the numeric index part (e.g. 0003)
+        for i, p in enumerate(parts):
+            if len(p) == 4 and p.isdigit():
+                return "_".join(parts[:i])
+        return "_".join(parts[:3])
     return _nice_source(chunk)
 
 
@@ -114,7 +124,11 @@ def _load_index(ay=DEFAULT_AY):
         meta = json.load(f)
     _index_cache[ay] = index
     _meta_cache[ay]  = meta
-    print(f"Loaded FAISS [{ay}] — {index.ntotal} vectors")
+    
+    # Count PDF vs Web chunks
+    pdf_count = sum(1 for v in meta.values() if v.get("chunk_id", "").startswith("pdf_"))
+    web_count = len(meta) - pdf_count
+    print(f"Loaded FAISS [{ay}] — {index.ntotal} vectors (PDF={pdf_count}, Web={web_count})")
     return index, meta
 
 
@@ -186,26 +200,35 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
     for i, c in enumerate(chunks, 1):
         source_label = c.get("_display_source", _nice_source(c))
         section      = c.get("section", "")
-        header       = f"[{i}] {source_label}" + (f" — {section}" if section else "")
+        doc_type     = c.get("doc_type", "")
+        is_pdf       = c.get("chunk_id", "").startswith("pdf_")
+        src_type     = "📄 PDF" if is_pdf else "🌐 Web"
+        header       = f"[{i}] {src_type} — {source_label}" + (f" — {section}" if section else "")
         ctx_parts.append(f"{header}\n{c['text']}")
     ctx = "\n\n---\n\n".join(ctx_parts)
 
     system = (
         f"You are an expert Indian income tax assistant for ITR-1 (Sahaj), AY {ay}. "
-        "Your knowledge base includes both official CBDT PDF documents and web sources. "
-        "Answer based on the provided context. "
-        "If the exact answer is in context, be precise and cite numbers (section, rupee amounts, AY). "
-        "If not fully covered, give your best answer and note what's uncertain. "
+        "Your knowledge base includes official CBDT PDF documents (Income Tax Act, Circulars, "
+        "ITR-1 Instructions, Validation Rules) AND web sources (e-Filing portal, ClearTax). "
+        "\n\nRULES:\n"
+        "1. Answer the question using the provided context chunks. Be helpful and informative.\n"
+        "2. If the context contains relevant information, cite it with [N] references.\n"
+        "3. Be precise with numbers: mention section numbers, rupee amounts, AY specifics.\n"
+        "4. If the context partially covers the topic, give your best answer using what's available "
+        "and clearly note which parts are from the source vs general knowledge.\n"
+        "5. If the user's input is abusive, greeting-only, or completely unrelated to taxes (e.g. 'stfu', 'hello', 'write a poem'), politely reply that you are an ITR-1 tax assistant and ask how you can help with their taxes. Do not try to force an answer from the context in this case.\n"
+        "6. Include relevant source names in your answer.\n\n"
         "Format your response as:\n\n"
         "**Answer**: <clear direct answer>\n"
-        "**Why**: <reasoning based on tax law>\n"
-        "**Source**: <quote the relevant line from the context, with source [N] reference>"
+        "**Details**: <detailed explanation with specific references>\n"
+        "**Sources**: <list each source [N] used with a brief quote from it>"
     )
     prompt = f"Context:\n{ctx}\n\nQuestion: {query}\n\nResponse:"
 
     try:
         from shared.llm_client import complete_with_system
-        return complete_with_system(system=system, user=prompt, temperature=0.0)
+        return complete_with_system(system=system, user=prompt, temperature=0.0, best_of_n=True)
     except Exception as e:
         print(f"LLM failed: {e}")
         # Fallback: return best chunk as plain answer with source
@@ -263,7 +286,7 @@ def _verify_answer(question: str, answer: str, chunks: list[dict]) -> dict:
 class QueryRequest(BaseModel):
     question: str
     ay:       str  = DEFAULT_AY
-    top_k:    int  = 5
+    top_k:    int  = 7      # increased from 5 for better coverage
     backend:  str  = "huggingface"
     rerank:   bool = True
     verify:   bool = True   # self-verify grounding of answer
@@ -324,9 +347,10 @@ async def query(req: QueryRequest):
         seen.add(cid)
         url = c.get("url", "")
         is_pdf = c.get("chunk_id", "").startswith("pdf_")
+        source_name = c.get("_display_source", _nice_source(c))
         citations.append({
-            "source":   c.get("_display_source", _nice_source(c)),
-            "url":      url,
+            "source":   source_name,
+            "url":      url if not is_pdf else "",  # PDFs don't have URLs
             "section":  c.get("section", ""),
             "doc_type": c.get("doc_type", ""),
             "is_pdf":   is_pdf,

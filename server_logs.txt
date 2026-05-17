@@ -1,18 +1,13 @@
 INFO:     Will watch for changes in these directories: ['E:\\itr1-project-final\\doc-parser']
 INFO:     Uvicorn running on http://0.0.0.0:8002 (Press CTRL+C to quit)
-INFO:     Started reloader process [17204] using WatchFiles
+INFO:     Started reloader process [3520] using WatchFiles
 INFO:     Will watch for changes in these directories: ['E:\\itr1-project-final\\rag-service']
 INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
-INFO:     Started reloader process [17168] using WatchFiles
+INFO:     Started reloader process [14596] using WatchFiles
 INFO:     Will watch for changes in these directories: ['E:\\itr1-project-final\\agent-orchestrator']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [15604] using WatchFiles
-INFO:     Started server process [8076]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Started server process [16488]
-INFO:     Waiting for application startup.
-INFO:     Started server process [8292]
+INFO:     Started reloader process [13356] using WatchFiles
+INFO:     Started server process [14960]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 API Gateway running on port 3001
@@ -21,112 +16,71 @@ Services: {
   ragService: 'http://localhost:8001',
   agentOrch: 'http://localhost:8000'
 }
-INFO:     127.0.0.1:56324 - "GET /health HTTP/1.1" 200 OK
+INFO:     Started server process [14132]
+INFO:     Waiting for application startup.
+INFO:     Started server process [12788]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
   â–² Next.js 14.2.5
   - Local:        http://localhost:3000
 
  âœ“ Starting...
- âœ“ Ready in 39.1s
-E:\itr1-project-final\.venv311\Lib\site-packages\huggingface_hub\file_download.py:143: UserWarning: `huggingface_hub` cache-system uses symlinks by default to efficiently store duplicated files but your machine does not support them in C:\Users\DELL\.cache\huggingface\hub\models--cross-encoder--ms-marco-MiniLM-L-6-v2. Caching files will still work but in a degraded version that might require more space on your disk. This warning can be disabled by setting the `HF_HUB_DISABLE_SYMLINKS_WARNING` environment variable. For more details, see https://huggingface.co/docs/huggingface_hub/how-to-cache#limitations.
-To support symlinks on Windows, you either need to activate Developer Mode or to run Python as an administrator. In order to activate developer mode, see this article: https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
-  warnings.warn(message)
-INFO:     Application startup complete.
+ âœ“ Ready in 4.2s
  â—‹ Compiling / ...
- âœ“ Compiled / in 4.9s (505 modules)
- GET / 200 in 8233ms
+ âœ“ Compiled / in 1930ms (505 modules)
+ GET / 200 in 2456ms
+INFO:     Application startup complete.
+ GET / 200 in 345ms
+ â—‹ Compiling /upload ...
+ âœ“ Compiled /upload in 5.1s (530 modules)
+[Form16] Using Structured LLM-on-Text parsing...
+INFO:     127.0.0.1:56474 - "POST /parse/form16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59402 - "POST /pipeline/run HTTP/1.1" 200 OK
+ â—‹ Compiling /form ...
+INFO:     127.0.0.1:52642 - "POST /pipeline/run HTTP/1.1" 200 OK
+ âœ“ Compiled /form in 8s (522 modules)
+INFO:     127.0.0.1:52642 - "GET /pipeline/session/2f68a622-e213-4133-b810-0fedc42939ef HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52642 - "GET /pipeline/session/2f68a622-e213-4133-b810-0fedc42939ef HTTP/1.1" 200 OK
+[Form16] Cache hit (54d6ba60793fb301) — returning cached parse result.
+INFO:     127.0.0.1:57846 - "POST /parse/form16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57849 - "POST /pipeline/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57849 - "GET /pipeline/session/d6f7ffeb-a34d-46cf-b694-deeeaf19fd06 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57849 - "GET /pipeline/session/d6f7ffeb-a34d-46cf-b694-deeeaf19fd06 HTTP/1.1" 200 OK
+ GET / 200 in 321ms
+ GET / 200 in 92ms
+[Form16] Cache hit (54d6ba60793fb301) — returning cached parse result.
+INFO:     127.0.0.1:53436 - "POST /parse/form16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53441 - "POST /pipeline/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53441 - "GET /pipeline/session/7abcb118-b196-4b05-8879-246df2dcee35 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53441 - "GET /pipeline/session/7abcb118-b196-4b05-8879-246df2dcee35 HTTP/1.1" 200 OK
+[ITR1Filler] Excel COM Error: (-2147418111, 'Call was rejected by callee.', None, None)
+INFO:     127.0.0.1:59040 - "GET /pipeline/export/7abcb118-b196-4b05-8879-246df2dcee35?format=excel HTTP/1.1" 200 OK
+[Form16] Using Structured LLM-on-Text parsing...
+INFO:     127.0.0.1:53727 - "POST /parse/form16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60021 - "POST /pipeline/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60021 - "GET /pipeline/session/2ce72ef9-563a-432b-8aa8-eb6e807cbf12 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60021 - "GET /pipeline/session/2ce72ef9-563a-432b-8aa8-eb6e807cbf12 HTTP/1.1" 200 OK
+[Form16] Cache hit (3a6ba84b06a91002) — returning cached parse result.
+INFO:     127.0.0.1:52355 - "POST /parse/form16 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52358 - "POST /pipeline/run HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52358 - "GET /pipeline/session/ecf2744d-b57b-49eb-bd81-b05f9175d005 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52358 - "GET /pipeline/session/ecf2744d-b57b-49eb-bd81-b05f9175d005 HTTP/1.1" 200 OK
  â—‹ Compiling /chat ...
- âœ“ Compiled /chat in 99.8s (530 modules)
- GET /chat 200 in 105206ms
- GET / 200 in 1751ms
+ âœ“ Compiled /chat in 1029ms (528 modules)
+ GET /chat 200 in 1290ms
+best_of_n: openrouter-llama-3-3-70b-free failed: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 
 Pre-loading FAISS index [AY2024-25]…
-Loaded FAISS [AY2024-25] — 42 vectors
+Loaded FAISS [AY2024-25] — 42 vectors (PDF=0, Web=42)
 Pre-loading embedding model…
 Warming up reranker…
 All RAG models ready.
-INFO:     127.0.0.1:60045 - "POST /query HTTP/1.1" 200 OK
- GET / 200 in 1192ms
- â—‹ Compiling /upload ...
- âœ“ Compiled /upload in 14.5s (522 modules)
- GET /upload 200 in 11508ms
-Validation failed for Groq Llama-4 Scout Vision (free) result
-Provider openrouter-llama-3-2-vision-free failed: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-Provider groq-llama-3-3-text failed: Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-Traceback (most recent call last):
-  File "E:\itr1-project-final\doc-parser\parsers\form16.py", line 431, in _fallback_vision_form16
-    ans = complete_vision(
-          ^^^^^^^^^^^^^^^^
-  File "E:\itr1-project-final\shared\llm_client.py", line 225, in complete_vision
-    return _try_providers(messages, temperature, providers or vision_providers, validate_fn=validate_fn)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\itr1-project-final\shared\llm_client.py", line 267, in _try_providers
-    raise RuntimeError(
-RuntimeError: All LLM providers failed. Errors:
-  • Groq Llama-4 Scout Vision (free): Validation failed
-  • OpenRouter Llama-3.2-11B Vision :free: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-  • Groq Llama-3.3-70B text fallback (free): Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-
-Check that at least GROQ_API_KEY or OPENROUTER_API_KEY is set in .env
-[Form16] Using Structured LLM-on-Text parsing...
-[Form16] Gross Salary is still 0. Falling back to Vision AI (OCR)...
-[Form16 Vision Fallback Error] All LLM providers failed. Errors:
-  • Groq Llama-4 Scout Vision (free): Validation failed
-  • OpenRouter Llama-3.2-11B Vision :free: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-  • Groq Llama-3.3-70B text fallback (free): Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-
-Check that at least GROQ_API_KEY or OPENROUTER_API_KEY is set in .env
-INFO:     127.0.0.1:64235 - "POST /parse/form16 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56738 - "POST /pipeline/run HTTP/1.1" 200 OK
- â—‹ Compiling /form ...
- âœ“ Compiled /form in 11.6s (542 modules)
-INFO:     127.0.0.1:53857 - "GET /pipeline/session/516061d7-c937-496d-beac-9817606474c1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53857 - "GET /pipeline/session/516061d7-c937-496d-beac-9817606474c1 HTTP/1.1" 200 OK
- GET /chat?session=516061d7-c937-496d-beac-9817606474c1 200 in 265ms
+INFO:     127.0.0.1:49236 - "POST /query HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49234 - "POST /chat/query HTTP/1.1" 200 OK
+best_of_n: openrouter-llama-3-3-70b-free failed: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 
 Provider groq-llama-3-3-70b failed: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01k
-INFO:     127.0.0.1:55059 - "POST /query HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55057 - "POST /chat/query HTTP/1.1" 200 OK
- GET / 200 in 454ms
- GET /upload 200 in 542ms
-Validation failed for Groq Llama-3.3-70B (free, 500K tok/day) result
-Validation failed for Groq Llama-4 Scout 17B (free) result
 Provider openrouter-llama-3-3-70b-free failed: Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'meta-llama/llama-3.
-Provider openrouter-mistral-free failed: Error code: 404 - {'error': {'message': 'No endpoints found for mistralai/mistral-7b-instruct:free.', 'code': 404}, 'use
-Validation failed for Groq Llama-4 Scout Vision (free) result
-Provider openrouter-llama-3-2-vision-free failed: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-Provider groq-llama-3-3-text failed: Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-Traceback (most recent call last):
-  File "E:\itr1-project-final\doc-parser\parsers\form16.py", line 431, in _fallback_vision_form16
-    ans = complete_vision(
-          ^^^^^^^^^^^^^^^^
-  File "E:\itr1-project-final\shared\llm_client.py", line 225, in complete_vision
-    return _try_providers(messages, temperature, providers or vision_providers, validate_fn=validate_fn)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\itr1-project-final\shared\llm_client.py", line 267, in _try_providers
-    raise RuntimeError(
-RuntimeError: All LLM providers failed. Errors:
-  • Groq Llama-4 Scout Vision (free): Validation failed
-  • OpenRouter Llama-3.2-11B Vision :free: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-  • Groq Llama-3.3-70B text fallback (free): Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-
-Check that at least GROQ_API_KEY or OPENROUTER_API_KEY is set in .env
-[Form16] Using Structured LLM-on-Text parsing...
-[Form16] LLM-on-Text failed: All LLM providers failed. Errors:
-  • Groq Llama-3.3-70B (free, 500K tok/day): Validation failed
-  • Groq Llama-4 Scout 17B (free): Validation failed
-  • OpenRouter Llama-3.3-70B :free ($0.00): Error code: 429 - {'error': {'message': 'Provider returned error', 'code': 429, 'metadata': {'raw': 'meta-llama/llama-3.
-  • OpenRouter Mistral 7B :free ($0.00): Error code: 404 - {'error': {'message': 'No endpoints found for mistralai/mistral-7b-instruct:free.', 'code': 404}, 'use
-
-Check that at least GROQ_API_KEY or OPENROUTER_API_KEY is set in .env
-[Form16] Gross Salary is still 0. Falling back to Vision AI (OCR)...
-[Form16 Vision Fallback Error] All LLM providers failed. Errors:
-  • Groq Llama-4 Scout Vision (free): Validation failed
-  • OpenRouter Llama-3.2-11B Vision :free: Error code: 404 - {'error': {'message': 'No endpoints found for meta-llama/llama-3.2-11b-vision-instruct:free.', 'code':
-  • Groq Llama-3.3-70B text fallback (free): Error code: 400 - {'error': {'message': 'messages[1].content must be a string', 'type': 'invalid_request_error', 'param'
-
-Check that at least GROQ_API_KEY or OPENROUTER_API_KEY is set in .env
-INFO:     127.0.0.1:53494 - "POST /parse/form16 HTTP/1.1" 200 OK
-[Form16] Using Structured LLM-on-Text parsing...
-INFO:     127.0.0.1:53335 - "POST /parse/form16 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52575 - "POST /pipeline/run HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52575 - "GET /pipeline/session/60fdfb93-b40b-41bc-be3f-1c475c0d79a3 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52575 - "GET /pipeline/session/60fdfb93-b40b-41bc-be3f-1c475c0d79a3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50232 - "POST /query HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50230 - "POST /chat/query HTTP/1.1" 200 OK
+ GET / 200 in 344ms
+INFO:     127.0.0.1:63281 - "POST /query/chunks HTTP/1.1" 200 OK
 WARNING:  WatchFiles detected changes in 'main.py'. Reloading...

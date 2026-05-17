@@ -73,15 +73,45 @@ function AnalyticsPanel({ data, conf }: { data: Record<string, Record<string, nu
   const os  = data.other_sources  || {};
   const hp  = data.house_property || {};
   const tc  = data.tax_computation || {};
+  const ded = data.deductions     || {};
 
   const salAmt = Number(sal.taxable_salary || 0);
+  const grossSal = Number(sal.gross_salary || 0);
   const fdAmt  = Number(os.fd_interest || 0);
   const sbAmt  = Number(os.savings_bank_interest || 0);
   const hpAmt  = Math.max(Number(hp.total_income_hp || 0), 0);
   const gti    = Number(tc.gross_total_income || 0);
   const taxLiab = Number(tc.total_tax_liability || 0);
   const tds    = Number(tc.tds_deducted || 0);
-  const net    = Number(tc.refund || tc.tax_payable || 0);
+  const refund = Number(tc.refund || 0);
+  const payable = Number(tc.tax_payable || 0);
+  const net    = refund > 0 ? refund : payable;
+  const taxableIncome = Number(tc.taxable_income || 0);
+
+  // Derived insights
+  const effectiveTaxRate = gti > 0 ? ((taxLiab / gti) * 100) : 0;
+  const monthlyGross = grossSal > 0 ? grossSal / 12 : 0;
+  const monthlyNet = grossSal > 0 ? (grossSal - taxLiab) / 12 : 0;
+  const stdDed = Number(sal.standard_deduction_16ia || 0);
+  const profTax = Number(sal.professional_tax_16iii || 0);
+  const sec80c = Number(ded.sec_80c || 0);
+  const sec80d = Number(ded.sec_80d || 0);
+  const sec80ccd2 = Number(ded.sec_80ccd_2 || 0);
+
+  // Financial health score (0-100)
+  const healthFactors = [
+    tds > 0 ? 20 : 0,                                           // TDS deducted
+    grossSal > 0 ? 15 : 0,                                      // Has salary income
+    refund > 0 ? 10 : (payable <= taxLiab * 0.1 ? 10 : 5),    // Adequate TDS coverage
+    sec80c > 0 ? 10 : 0,                                        // Utilizes 80C
+    sec80d > 0 ? 10 : 0,                                        // Has health insurance
+    stdDed > 0 ? 10 : 0,                                        // Standard deduction claimed
+    effectiveTaxRate < 20 ? 15 : (effectiveTaxRate < 30 ? 10 : 5), // Reasonable tax rate
+    gti <= 5000000 ? 10 : 0,                                    // ITR-1 eligibility OK
+  ];
+  const healthScore = healthFactors.reduce((a, b) => a + b, 0);
+  const healthLabel = healthScore >= 80 ? "Excellent" : healthScore >= 60 ? "Good" : healthScore >= 40 ? "Fair" : "Needs Attention";
+  const healthColor = healthScore >= 80 ? "text-emerald-400" : healthScore >= 60 ? "text-teal-400" : healthScore >= 40 ? "text-amber-400" : "text-red-400";
 
   // Coverage stats
   const allConf = Object.values(conf);
@@ -104,11 +134,71 @@ function AnalyticsPanel({ data, conf }: { data: Record<string, Record<string, nu
     {label: "Gross Income",  val: gti,     w: gti/maxW,     color: "bg-teal-700"},
     {label: "Tax Liability", val: taxLiab, w: taxLiab/maxW, color: "bg-slate-600"},
     {label: "TDS Deducted",  val: tds,     w: tds/maxW,     color: "bg-slate-500"},
-    {label: "Net (Ref/Pay)", val: net,     w: Math.abs(net)/maxW, color: net >= 0 ? "bg-emerald-700" : "bg-amber-700"},
+    {label: "Net (Ref/Pay)", val: net,     w: Math.abs(net)/maxW, color: refund > 0 ? "bg-emerald-700" : "bg-amber-700"},
   ];
 
+  // Personalized tax saving tips
+  const tips: {icon: string; title: string; detail: string; tag: string}[] = [];
+  if (sec80c < 150000 && sec80c >= 0) {
+    const unused = 150000 - sec80c;
+    tips.push({icon: "💡", title: "Sec 80C Limit Available", detail: `You've claimed ${rupee(sec80c)} of ₹1,50,000. Invest ${rupee(unused)} more in PPF/ELSS/NPS to save up to ${rupee(Math.round(unused * 0.3))} tax (old regime).`, tag: "Old Regime"});
+  }
+  if (sec80d === 0) {
+    tips.push({icon: "🏥", title: "Get Health Insurance (80D)", detail: "No 80D deduction claimed. A family health plan (₹25,000–₹75,000 premium) gives tax savings and critical coverage.", tag: "Both Regimes"});
+  }
+  if (sec80ccd2 === 0 && grossSal > 500000) {
+    tips.push({icon: "🏛️", title: "Ask Employer for NPS 80CCD(2)", detail: "Employer NPS contribution (up to 14% of basic) is deductible even under the New Regime — the only major deduction available.", tag: "New Regime ✓"});
+  }
+  if (sbAmt > 10000) {
+    tips.push({icon: "🏦", title: "High Savings Interest", detail: `Your savings interest is ${rupee(sbAmt)}. Only ₹10,000 is exempt under 80TTA. Consider FD laddering or Debt MFs for better post-tax returns.`, tag: "Optimization"});
+  }
+  if (taxableIncome > 0 && taxableIncome <= 700000) {
+    tips.push({icon: "🎉", title: "87A Rebate Eligible!", detail: "Your taxable income is within ₹7,00,000 — you get full 87A rebate under New Regime. Your effective tax is ₹0!", tag: "Great News"});
+  }
+  if (grossSal > 0 && effectiveTaxRate < 5) {
+    tips.push({icon: "📉", title: "Low Effective Tax Rate", detail: `Your effective tax rate is just ${effectiveTaxRate.toFixed(1)}%. Your TDS planning is efficient — most of your income goes to you.`, tag: "Healthy"});
+  }
+
+  // Filing checklist
+  const checklist = [
+    {label: "Form 16 uploaded & parsed", done: grossSal > 0},
+    {label: "PAN verified", done: Boolean(data.personal_info?.pan)},
+    {label: "Bank details available", done: Boolean(data.personal_info?.bank_account_number || data.personal_info?.bank_account)},
+    {label: "TDS credited (Form 16 Part A)", done: tds > 0},
+    {label: "Tax computation complete", done: taxLiab >= 0 && gti > 0},
+    {label: "All sections filled", done: na < total * 0.5},
+    {label: "No critical flags", done: flagged === 0},
+  ];
+  const checkDone = checklist.filter(c => c.done).length;
+
   return (
-    <div className="glass-card mb-6 p-6 fade-in-up">
+    <>
+    {/* ── Quick Stats Cards ──────────────────────────────────────────────── */}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 fade-in-up">
+      <div className="glass-card p-4 rounded-xl text-center">
+        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Monthly Gross</div>
+        <div className="text-lg font-bold text-slate-100 tabular-nums">{rupee(Math.round(monthlyGross))}</div>
+        <div className="text-[10px] text-slate-500">per month (pre-tax)</div>
+      </div>
+      <div className="glass-card p-4 rounded-xl text-center">
+        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Monthly Take-Home</div>
+        <div className="text-lg font-bold text-emerald-300 tabular-nums">{rupee(Math.round(monthlyNet))}</div>
+        <div className="text-[10px] text-slate-500">after income tax</div>
+      </div>
+      <div className="glass-card p-4 rounded-xl text-center">
+        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Effective Tax Rate</div>
+        <div className={`text-lg font-bold tabular-nums ${effectiveTaxRate < 10 ? 'text-emerald-300' : effectiveTaxRate < 20 ? 'text-teal-300' : 'text-amber-300'}`}>{effectiveTaxRate.toFixed(1)}%</div>
+        <div className="text-[10px] text-slate-500">of gross income</div>
+      </div>
+      <div className="glass-card p-4 rounded-xl text-center">
+        <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Financial Health</div>
+        <div className={`text-lg font-bold ${healthColor}`}>{healthScore}/100</div>
+        <div className={`text-[10px] ${healthColor}`}>{healthLabel}</div>
+      </div>
+    </div>
+
+    {/* ── Main Analytics ─────────────────────────────────────────────────── */}
+    <div className="glass-card mb-5 p-6 fade-in-up">
       <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">📊 Analytics Overview</div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
@@ -147,29 +237,65 @@ function AnalyticsPanel({ data, conf }: { data: Record<string, Record<string, nu
           </div>
         </div>
 
-        {/* Field Coverage */}
+        {/* Filing Checklist */}
         <div>
-          <div className="text-xs text-slate-400 font-semibold mb-2">Field Coverage ({total} fields)</div>
-          <div className="space-y-2">
-            {[
-              {label: "From Documents", count: fromDocs, color: "bg-teal-600"},
-              {label: "Computed",       count: computed,  color: "bg-slate-500"},
-              {label: "Not Available",  count: na,        color: "bg-stone-600"},
-              {label: "Needs Review",   count: flagged,   color: "bg-red-700"},
-            ].map((r, i) => r.count > 0 && (
+          <div className="text-xs text-slate-400 font-semibold mb-2">Filing Readiness ({checkDone}/{checklist.length})</div>
+          <div className="space-y-1.5">
+            {checklist.map((c, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
-                <div className={`w-2 h-2 rounded-full ${r.color} shrink-0`} />
-                <span className="text-slate-400 flex-1">{r.label}</span>
-                <span className="text-slate-200 font-mono text-right w-8">{r.count}</span>
-                <div className="w-16 h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full ${r.color} rounded-full`} style={{width: `${(r.count/total)*100}%`}} />
-                </div>
+                <span className={`text-sm ${c.done ? 'text-emerald-400' : 'text-slate-600'}`}>{c.done ? '✓' : '○'}</span>
+                <span className={c.done ? "text-slate-300" : "text-slate-500"}>{c.label}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
     </div>
+
+    {/* ── Personalized Tax Saving Tips ────────────────────────────────────── */}
+    {tips.length > 0 && (
+      <div className="glass-card mb-5 p-6 fade-in-up border border-purple-500/10">
+        <div className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-4">💡 Personalized Tax Insights for You</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {tips.map((tip, i) => (
+            <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] p-4 hover:bg-white/[0.04] transition-colors">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">{tip.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-slate-200">{tip.title}</span>
+                    <span className="text-[9px] uppercase font-bold tracking-wider bg-purple-900/30 text-purple-300 border border-purple-500/20 px-1.5 py-0.5 rounded">{tip.tag}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">{tip.detail}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* ── Quick Resources ────────────────────────────────────────────────── */}
+    <div className="glass-card mb-5 p-5 fade-in-up">
+      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">📚 Quick Resources</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          {label: "e-Filing Portal", url: "https://www.incometax.gov.in", icon: "🌐"},
+          {label: "Form 26AS / AIS", url: "https://www.incometax.gov.in/iec/foportal/", icon: "📋"},
+          {label: "Tax Slab Rates 2025", url: "https://cleartax.in/s/income-tax-slabs", icon: "📊"},
+          {label: "80C Investments", url: "https://cleartax.in/s/80c-80-deductions", icon: "💰"},
+        ].map((r, i) => (
+          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 text-xs rounded-lg border border-white/5 px-3 py-2.5 text-slate-300
+              hover:border-blue-500/30 hover:bg-white/[0.03] hover:text-blue-300 transition-all">
+            <span>{r.icon}</span>
+            <span className="truncate">{r.label}</span>
+            <span className="ml-auto text-slate-600">↗</span>
+          </a>
+        ))}
+      </div>
+    </div>
+    </>
   );
 }
 
