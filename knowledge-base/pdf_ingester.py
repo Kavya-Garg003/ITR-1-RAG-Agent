@@ -6,7 +6,7 @@ vector store that the scraper.py web chunks go into.
 
 Your downloaded files it expects:
   knowledge-base/pdfs/
-    itr1_instructions_AY2024-25.pdf    ← CBDT ITR-1 instructions booklet
+    itr1_instructions_AY2025-26.pdf    ← CBDT ITR-1 instructions booklet
     itr1_instructions_AY2025-26.pdf    ← next year if downloaded
     circular_03_2025.pdf               ← CBDT Circular 03/2025 (TDS on salary)
     circular_20_2024.pdf               ← any other CBDT circulars
@@ -285,7 +285,7 @@ def chunk_pdf_text(
 
 def ingest_pdf(
     pdf_path: Path,
-    ay:       str  = "AY2024-25",
+    ay:       str  = "AY2025-26",
     source_override: str = "",
 ) -> list[dict]:
     print(f"\n  Processing: {pdf_path.name}")
@@ -351,7 +351,7 @@ def main():
     parser.add_argument("--dir",    default=str(PDF_DIR), help="Directory of PDFs to ingest")
     parser.add_argument("--file",   help="Single PDF file to ingest")
     parser.add_argument("--source", help="Override source name for --file")
-    parser.add_argument("--ay",     default="AY2024-25", help="Assessment Year namespace")
+    parser.add_argument("--ay",     default="AY2025-26", help="Assessment Year namespace")
     args = parser.parse_args()
 
     print(f"\n📄 PDF Ingester — ITR-1 Knowledge Base")
@@ -373,7 +373,7 @@ def main():
             print(f"\nNo PDFs found in {pdf_dir}/")
             print("Put your downloaded PDFs there and re-run.")
             print(f"\nExpected files (names don't need to match exactly):")
-            print("  itr1_instructions_AY2024-25.pdf")
+            print("  itr1_instructions_AY2025-26.pdf")
             print("  circular_03_2025.pdf")
             print("  income_tax_act_sections.pdf")
             return

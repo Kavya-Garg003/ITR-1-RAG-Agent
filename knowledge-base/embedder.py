@@ -16,8 +16,8 @@ Run:
 
 Output:
     vector_store/
-        AY2024-25.faiss     — FAISS index (flat L2)
-        AY2024-25.meta.json — chunk metadata indexed by vector position
+        AY2025-26.faiss     — FAISS index (flat L2)
+        AY2025-26.meta.json — chunk metadata indexed by vector position
 """
 
 import argparse
@@ -32,7 +32,7 @@ import numpy as np
 # ── Config ────────────────────────────────────────────────────────────────────
 CHUNKS_JSONL = Path("rag_output/combined/all_chunks.jsonl")
 VECTOR_STORE  = Path("vector_store")
-AY_NAMESPACE  = "AY2024-25"    # change per assessment year
+AY_NAMESPACE  = "AY2025-26"    # change per assessment year
 
 VECTOR_STORE.mkdir(exist_ok=True)
 

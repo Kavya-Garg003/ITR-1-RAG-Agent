@@ -38,7 +38,7 @@ def main():
             "name": "RAGService",
             "cmd": [uvicorn_exe, "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"],
             "cwd": str(root / "rag-service"),
-            "env": {"PYTHONPATH": str(root), "VECTOR_STORE_DIR": str(root / "knowledge-base" / "vector_store"), "DEFAULT_AY": "AY2024-25"}
+            "env": {"PYTHONPATH": str(root), "VECTOR_STORE_DIR": str(root / "knowledge-base" / "vector_store"), "DEFAULT_AY": "AY2025-26"}
         },
         {
             "name": "AgentOrch",

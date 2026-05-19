@@ -145,7 +145,7 @@ def _validate_and_fix(result: Form16Data) -> Form16Data:
             )
             result.gross_salary = components_sum
 
-    # Rule 2: standard deduction cap (₹50,000 for AY2024-25, ₹75,000 for AY2025-26)
+    # Rule 2: standard deduction cap (₹50,000 for AY2025-26, ₹75,000 for AY2025-26)
     if result.standard_deduction_16ia > 75000:
         result.warnings.append(
             f"standard_deduction_16ia {result.standard_deduction_16ia} exceeds ₹75,000 cap — capped."

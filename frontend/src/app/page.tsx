@@ -212,7 +212,7 @@ const FEATURES = [
   {
     icon: "⚖️",
     title: "Regime Comparison",
-    desc: "Statutory math computes exact tax under both old and new regime using AY 2024-25 slab rates. Recommends the better regime with rupee savings shown.",
+    desc: "Statutory math computes exact tax under both old and new regime using AY 2025-26 slab rates. Recommends the better regime with rupee savings shown.",
     color: "from-purple-500/20 to-violet-500/10 border-purple-500/20",
   },
   {
@@ -257,7 +257,7 @@ export default function AboutPage() {
           <div className="inline-flex items-center gap-2 text-xs font-bold tracking-widest text-blue-400
             bg-blue-500/10 border border-blue-500/20 rounded-full px-5 py-2 mb-8">
             <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-            FINAL YEAR PROJECT · AI + ML · AY 2024-25
+            6TH SEMESTER MINI PROJECT · AI + ML · AY 2025-26
           </div>
           <h1 className="text-5xl md:text-7xl font-black mb-6 leading-tight">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-teal-400">
@@ -475,7 +475,7 @@ export default function AboutPage() {
               { q: "Why FAISS not Pinecone?",        a: "FAISS locally (zero cost, full control, fast). Pinecone for production scale (managed). Shows we understand the tradeoff." },
               { q: "Why MMR over similarity search?",a: "Prevents 5 near-identical chunks being returned. Balances relevance with diversity using λ=0.6." },
               { q: "Why Groq over OpenAI?",          a: "Free tier: 14,400 req/day, 500K tokens/day. llama-3.3-70b quality matches gpt-4o-mini for this domain. Fallback to OpenRouter if rate-limited." },
-              { q: "How is it AY-updatable?",        a: "Versioned FAISS namespaces (AY2024-25.faiss, AY2025-26.faiss). New AY: ingest new CBDT PDFs + run embedder. Only RAG service redeploys." },
+              { q: "How is it AY-updatable?",        a: "Versioned FAISS namespaces (AY2025-26.faiss, AY2025-26.faiss). New AY: ingest new CBDT PDFs + run embedder. Only RAG service redeploys." },
               { q: "How do you prevent hallucination?",a:"Answers grounded in retrieved FAISS chunks only. Confidence scoring flags uncertain fields. Validator catches tax rule violations." },
             ].map((item, i) => (
               <div key={i} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex gap-4">
@@ -510,7 +510,7 @@ export default function AboutPage() {
       {/* Footer */}
       <div className="border-t border-white/5 py-8 text-center">
         <p className="text-slate-600 text-sm">
-          ITR-1 RAG Agent · Final Year Project · RAG + Multi-Agentic AI · AY 2024-25
+          ITR-1 RAG Agent · 6th Semester Mini Project · RAG + Multi-Agentic AI · AY 2025-26
         </p>
       </div>
     </div>

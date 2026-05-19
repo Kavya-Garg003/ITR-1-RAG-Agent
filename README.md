@@ -2,7 +2,7 @@
 
 **What it is:** An AI-powered system that reads your tax documents (Form 16, bank statements), automatically fills every field of the ITR-1 Sahaj form, compares old vs new tax regime and recommends the better one, validates the filled form for errors, explains every filled field in plain English, and lets you ask questions about your taxes through a chat interface grounded in official CBDT sources.
 
-**Who it is for:** Any salaried individual filing ITR-1 for AY 2024-25 with income up to ₹50 lakh from salary, one house property, and other sources (interest income).
+**Who it is for:** Any salaried individual filing ITR-1 for AY 2025-26 with income up to ₹50 lakh from salary, one house property, and other sources (interest income).
 
 ---
 
@@ -32,7 +32,7 @@ Here is the complete user flow from opening the browser to getting a filled ITR-
 **Step 3 — Agent pipeline.** The parsed documents are sent to the Agent Orchestrator at port 8000, which runs a 5-node LangGraph pipeline:
 
 - **fill_form node** — maps every extracted field to the correct ITR-1 field path defined in `shared/itr1_schema.py`. Assigns a confidence score (0–1) and source citation to every field. Fields that came from a document get high confidence; fields that had to be inferred get lower confidence and are flagged for manual review.
-- **compare_regimes node** — runs the actual AY 2024-25 slab math for both old and new regime on the user's income and deductions. Does not use an LLM for this calculation — it uses the `compute_tax()` function in `shared/tax_utils.py` which has the exact statutory slab rates and is tested. Picks the regime with lower tax and records the saving.
+- **compare_regimes node** — runs the actual AY 2025-26 slab math for both old and new regime on the user's income and deductions. Does not use an LLM for this calculation — it uses the `compute_tax()` function in `shared/tax_utils.py` which has the exact statutory slab rates and is tested. Picks the regime with lower tax and records the saving.
 - **validate node** — checks 12 rules: 80C family cap at ₹1.5L, HRA and 80GG not both claimed, income not exceeding ₹50L (ITR-1 limit), 80TTA and 80TTB not both claimed, TDS cross-check against expected tax, etc. Each violation becomes a flag with severity (error/warning/info) and a plain-English fix suggestion.
 - **score_confidence node** — aggregates confidence across all filled fields. Any field that was not found in the uploaded documents gets confidence 0.3 and is automatically flagged for manual review.
 - **explain node** — generates plain-English explanations for complex fields (HRA calculation, 87A rebate eligibility, regime recommendation reasoning) using GPT-4o-mini.
@@ -110,7 +110,7 @@ itr1-rag-agent/
 │   │                            (ClearTax is React, incometax.gov.in is Drupal).
 │   ├── embedder.py              Takes all_chunks.jsonl → embeds → saves FAISS index.
 │   │                            Two backends: HuggingFace BGE (free) or OpenAI (better quality).
-│   │                            Saves: vector_store/AY2024-25.faiss + AY2024-25.meta.json
+│   │                            Saves: vector_store/AY2025-26.faiss + AY2025-26.meta.json
 │   ├── retriever.py             Standalone retriever class: MMR + cross-encoder reranking.
 │   │                            Importable into any Python service. Also has a CLI for testing.
 │   ├── manual_fallback.py       Fallback scraper using curl when Playwright gets blocked.
@@ -123,13 +123,13 @@ itr1-rag-agent/
 │   │                            downloaded from the ITD utility. Maps every official field name
 │   │                            to our itr1_schema.py dot-path. Outputs field_map.json.
 │   ├── pdfs/                    PUT YOUR DOWNLOADED PDFS HERE.
-│   │   ├── itr1_instructions_AY2024-25.pdf
+│   │   ├── itr1_instructions_AY2025-26.pdf
 │   │   ├── circular_03_2025.pdf
 │   │   ├── income_tax_act_sections.pdf
 │   │   └── ... (any other PDFs)
 │   └── form_files/              PUT YOUR DOWNLOADED FORM FILES HERE.
-│       ├── itr1_schema_AY2024-25.json   (JSON schema from ITD utility)
-│       └── itr1_fields_AY2024-25.xlsx  (Excel field map)
+│       ├── itr1_schema_AY2025-26.json   (JSON schema from ITD utility)
+│       └── itr1_fields_AY2025-26.xlsx  (Excel field map)
 │
 ├── shared/                      Python package imported by all 3 Python services.
 │   ├── __init__.py
@@ -140,7 +140,7 @@ itr1-rag-agent/
 │   │                            TaxComputation, FieldConfidence, ValidationFlag, ITR1Form.
 │   │                            Every Python service imports from here. No field defined
 │   │                            anywhere else.
-│   └── tax_utils.py             All statutory tax math for AY 2024-25. Contains:
+│   └── tax_utils.py             All statutory tax math for AY 2025-26. Contains:
 │                                - AY_CONFIG dict with exact slab rates, rebate limits, cess rate,
 │                                  surcharge slabs for both regimes
 │                                - compute_tax() — progressive slab calculation
@@ -190,7 +190,7 @@ itr1-rag-agent/
 │                                POST /query/chunks — return raw chunks without LLM (debug)
 │                                GET  /indexes — list available AY namespaces
 │                                GET  /health
-│                                Loads FAISS index from vector_store/AY2024-25.faiss on startup.
+│                                Loads FAISS index from vector_store/AY2025-26.faiss on startup.
 │                                Uses sentence-transformers BGE model to embed queries (same
 │                                model used by embedder.py — MUST match). MMR retrieval with
 │                                lambda=0.6, cross-encoder reranking with ms-marco-MiniLM.
@@ -325,8 +325,8 @@ The FAISS vector store contains two types of content:
 Your downloaded PDFs go in `knowledge-base/pdfs/`. The ingester auto-detects what each PDF is based on the filename using regex patterns. Recommended files:
 
 ```
-itr1_instructions_AY2024-25.pdf   ← CBDT instructions booklet (most important)
-circular_03_2025.pdf               ← CBDT Circular 03/2025 (TDS on salary FY 2024-25)
+itr1_instructions_AY2025-26.pdf   ← CBDT instructions booklet (most important)
+circular_03_2025.pdf               ← CBDT Circular 03/2025 (TDS on salary FY 2025-26)
 income_tax_act_sections.pdf        ← IT Act: Sec 80C, 80D, 87A, 115BAC, 139(1), etc.
 finance_act_2023.pdf               ← Budget 2023 changes
 ```
@@ -356,7 +356,7 @@ Every chunk carries metadata: `source`, `doc_type`, `applicable_ay`, `section`, 
 ### AY versioning
 
 Each assessment year gets its own FAISS namespace:
-- `vector_store/AY2024-25.faiss` + `AY2024-25.meta.json`
+- `vector_store/AY2025-26.faiss` + `AY2025-26.meta.json`
 - `vector_store/AY2025-26.faiss` + `AY2025-26.meta.json`
 
 When new AY drops: ingest new PDFs → run embedder with `--ay AY2025-26` → only the RAG service redeploys. No other service is touched.
@@ -539,8 +539,8 @@ python embedder.py --backend huggingface
 After this you will have:
 ```
 vector_store/
-  AY2024-25.faiss
-  AY2024-25.meta.json
+  AY2025-26.faiss
+  AY2025-26.meta.json
 ```
 
 ### Step 4: Start all services
@@ -596,7 +596,7 @@ Last resort: open the page in Chrome, Ctrl+S to save as HTML, then run the `--fr
 | Item | Where to get it | Where to put it |
 |------|----------------|-----------------|
 | OpenAI API key | platform.openai.com | `.env` file |
-| ITR-1 instructions PDF (AY 2024-25) | incometaxindia.gov.in downloads page | `knowledge-base/pdfs/` |
+| ITR-1 instructions PDF (AY 2025-26) | incometaxindia.gov.in downloads page | `knowledge-base/pdfs/` |
 | CBDT Circular 03/2025 | incometaxindia.gov.in/communications | `knowledge-base/pdfs/` |
 | Income Tax Act relevant sections | indiacode.nic.in or indiankanoon.org | `knowledge-base/pdfs/` |
 | ITR-1 JSON schema | ITD offline utility → extract from ZIP | `knowledge-base/form_files/` |
@@ -643,7 +643,7 @@ The websites (incometax.gov.in pages, ClearTax) are scraped automatically by `sc
 | Why Node.js for gateway? | Event-driven non-blocking I/O is the correct tool for orchestrating async calls to multiple Python microservices. Justifiable, not arbitrary |
 | Why FAISS not Pinecone? | FAISS locally (zero cost, full control, fast for demo). Pinecone for production scale (managed, auto-scaling). Shows you know the tradeoff |
 | How do you prevent hallucination? | RAG grounds answers in retrieved context. Confidence scoring flags fields not found in documents. Validator catches tax rule violations. Explain node uses context from state, not free generation |
-| How is it AY-updatable? | Versioned FAISS namespaces (AY2024-25, AY2025-26). New AY: ingest new PDFs + re-run embedder → only RAG service redeploys. tax_utils.py AY_CONFIG dict has one entry per year |
+| How is it AY-updatable? | Versioned FAISS namespaces (AY2025-26, AY2025-26). New AY: ingest new PDFs + re-run embedder → only RAG service redeploys. tax_utils.py AY_CONFIG dict has one entry per year |
 | What does LangGraph add over raw prompting? | Models the pipeline as a state machine — each node has a defined contract (input state, output state). Resumable, testable in isolation, clear separation of concerns. Visualisable as a graph for viva |
 | Why MMR retrieval? | Prevents 5 near-identical chunks being returned for a query. Balances relevance (similarity to query) with diversity (dissimilarity to already-selected chunks). Lambda=0.6 weights relevance higher |
 | What is the cross-encoder for? | Re-ranks the 5 MMR results with a more expensive but accurate model. Bi-encoder (used for FAISS) is fast but approximate. Cross-encoder sees query+document together, much better precision |

@@ -4,11 +4,11 @@ RAG Retriever — ITR-1 Knowledge Base
 MMR retrieval + cross-encoder reranking, as specified in the project PDF.
 
 Usage:
-    python retriever.py --query "what is the 80C limit?" --ay AY2024-25 --top_k 5
+    python retriever.py --query "what is the 80C limit?" --ay AY2025-26 --top_k 5
 
 Or import as a module in your LangChain FastAPI service:
     from retriever import ITRRetriever
-    retriever = ITRRetriever(ay="AY2024-25", backend="huggingface")
+    retriever = ITRRetriever(ay="AY2025-26", backend="huggingface")
     results = retriever.retrieve("what is the 80C limit?")
 """
 
@@ -50,7 +50,7 @@ class ITRRetriever:
 
     def __init__(
         self,
-        ay:       str  = "AY2024-25",
+        ay:       str  = "AY2025-26",
         backend:  str  = "huggingface",  # "openai" or "huggingface"
         top_k:    int  = 5,
         mmr_lambda: float = 0.6,         # 1.0 = pure relevance, 0.0 = pure diversity
@@ -218,7 +218,7 @@ class ITRRetriever:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--query",   required=True)
-    parser.add_argument("--ay",      default="AY2024-25")
+    parser.add_argument("--ay",      default="AY2025-26")
     parser.add_argument("--backend", default="huggingface", choices=["openai", "huggingface"])
     parser.add_argument("--top_k",   type=int, default=5)
     parser.add_argument("--no-rerank", action="store_true")

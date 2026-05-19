@@ -47,7 +47,7 @@ RAG_SERVICE_URL = os.getenv("RAG_SERVICE_URL", "http://rag-service:8001")
 DOC_PARSER_URL  = os.getenv("DOC_PARSER_URL",  "http://doc-parser:8002")
 
 
-async def _rag_query(question: str, ay: str = "AY2024-25") -> str:
+async def _rag_query(question: str, ay: str = "AY2025-26") -> str:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(f"{RAG_SERVICE_URL}/query",
@@ -92,7 +92,7 @@ def node_fill_form(state: AgentState) -> dict:
 
         # ── Personal Info ──────────────────────────────────────────────────────
         form.personal_info.pan             = d.get("employee_pan")
-        form.personal_info.assessment_year = d.get("assessment_year", "2024-25") or "2024-25"
+        form.personal_info.assessment_year = d.get("assessment_year", "2025-26") or "2025-26"
 
         # Split employee_name into first / last name
         raw_name = (d.get("employee_name") or "").strip()
@@ -314,7 +314,7 @@ def node_fill_form(state: AgentState) -> dict:
 
 def node_compute_tax(state: AgentState) -> dict:
     form_data = state["itr1_form"]
-    ay        = state.get("ay", "AY2024-25")
+    ay        = state.get("ay", "AY2025-26")
 
     gti       = form_data["tax_computation"]["gross_total_income"]
     ded_80ccd2 = form_data["deductions"].get("sec_80ccd_2", 0)
@@ -532,7 +532,7 @@ def node_explain(state: AgentState) -> dict:
 
     # Regime note
     explanations["regime"] = (
-        "Filing under 2025 New Tax Regime (default from AY 2024-25). "
+        "Filing under 2025 New Tax Regime (default from AY 2025-26). "
         "Only 80CCD(2) employer NPS deduction is available. "
         "Slab rates: 0-₹3L=Nil, ₹3-6L=5%, ₹6-9L=10%, ₹9-12L=15%, ₹12-15L=20%, above 15L=30%."
     )
@@ -606,7 +606,7 @@ def build_itr_graph() -> StateGraph:
 
 def run_itr_pipeline(parsed_documents: list[dict],
                      session_id: str = "default",
-                     ay: str = "AY2024-25") -> dict:
+                     ay: str = "AY2025-26") -> dict:
     from shared.itr1_schema import ITR1Form
     initial_form = json.loads(ITR1Form().model_dump_json())
     initial_state: AgentState = {

@@ -31,12 +31,12 @@ _session_store: dict[str, dict] = {}
 class RunPipelineRequest(BaseModel):
     parsed_documents: list[dict]
     session_id:       Optional[str] = None
-    ay:               str           = "AY2024-25"
+    ay:               str           = "AY2025-26"
 
 class ChatRequest(BaseModel):
     question:         str
     session_id:       Optional[str] = None
-    ay:               str           = "AY2024-25"
+    ay:               str           = "AY2025-26"
     include_form_context: bool      = True
 
 class UpdateFieldRequest(BaseModel):
@@ -216,7 +216,7 @@ def export_form(session_id: str, format: str = "json"):
     if format == "json":
         return {
             "session_id": session_id,
-            "ay":         result["itr1_form"].get("ay", "AY2024-25"),
+            "ay":         result["itr1_form"].get("ay", "AY2025-26"),
             "itr1_form":  result["itr1_form"],
             "exported_at": __import__("datetime").datetime.utcnow().isoformat(),
         }

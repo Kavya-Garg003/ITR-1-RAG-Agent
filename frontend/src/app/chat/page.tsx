@@ -30,7 +30,7 @@ interface Message {
 // ── Suggested questions ─────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
-  "What is the standard deduction for AY 2024-25 under the new regime?",
+  "What is the standard deduction for AY 2025-26 under the new regime?",
   "How is HRA exemption calculated?",
   "What is the 87A rebate and who can claim it?",
   "Is 80C applicable under the 2025 New Tax Regime?",
@@ -140,8 +140,8 @@ function ChatPageInner() {
       id:      "welcome",
       role:    "assistant",
       content: sessionId
-        ? "Hi! I can see your ITR-1 is filled. Ask me anything about your return, deductions, or tax rules for AY 2024-25."
-        : "Hi! I'm your ITR-1 tax assistant for AY 2024-25. Ask me anything about filing your return, deductions, or tax rules.",
+        ? "Hi! I can see your ITR-1 is filled. Ask me anything about your return, deductions, or tax rules for AY 2025-26."
+        : "Hi! I'm your ITR-1 tax assistant for AY 2025-26. Ask me anything about filing your return, deductions, or tax rules.",
     },
   ]);
   const [input,   setInput]   = useState("");
@@ -187,7 +187,7 @@ function ChatPageInner() {
         body:    JSON.stringify({
           question,
           session_id:           sessionId || undefined,
-          ay:                   "AY2024-25",
+          ay:                   "AY2025-26",
           include_form_context: !!sessionId,
         }),
       });

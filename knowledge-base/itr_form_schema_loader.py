@@ -5,8 +5,8 @@ Reads the official ITR-1 JSON schema and Excel field map you downloaded
 from the income tax portal and wires them into the form-filling agent.
 
 Files it reads from knowledge-base/form_files/:
-  itr1_schema_AY2024-25.json     ← official JSON schema (from ITD utility)
-  itr1_fields_AY2024-25.xlsx     ← field map / validation rules (Excel)
+  itr1_schema_AY2025-26.json     ← official JSON schema (from ITD utility)
+  itr1_fields_AY2025-26.xlsx     ← field map / validation rules (Excel)
   ITR1.pdf                       ← the actual blank Sahaj form (for reference)
 
 What it produces:

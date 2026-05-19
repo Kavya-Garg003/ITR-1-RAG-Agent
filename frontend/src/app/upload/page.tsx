@@ -169,7 +169,7 @@ export default function UploadPage() {
         body:    JSON.stringify({
           parsed_documents: docs.map((d) => ({ doc_type: d.doc_type, data: d.data })),
           session_id:       docs[0]?.session_id,
-          ay:               "AY2024-25",
+          ay:               "AY2025-26",
         }),
       });
       const result = await resp.json();
@@ -201,7 +201,7 @@ export default function UploadPage() {
           </p>
           <div className="mt-4 text-xs font-semibold text-blue-300 bg-blue-900/30 border border-blue-500/20 rounded-full px-5 py-2 inline-flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <span>AY 2024-25 • STRICT NEW REGIME</span>
+            <span>AY 2025-26 • STRICT NEW REGIME</span>
           </div>
         </div>
 
