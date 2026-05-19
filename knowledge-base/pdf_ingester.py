@@ -202,8 +202,7 @@ NOISE_PATTERNS = [
     r"^\s*Page\s+\d+\s+of\s+\d+\s*$",     # "Page 3 of 12"
     r"^\s*FORM\s+ITR.?\d\s*$",             # just "FORM ITR-1"
     r"^\s*www\.[^\s]+\s*$",                # lone URLs
-    r"^\s*incometax(india)?\.gov\.in\s*$", # domain names
-    r"^\[Page\s+\d+\]$",                   # our own page markers (keep surrounding text)
+    r"^\s*incometax(india)?\.gov\.in\s*$"  # domain names
 ]
 
 
@@ -267,7 +266,7 @@ def chunk_pdf_text(
 
         uid = hashlib.md5(f"{file_id}:{i}:{ct[:50]}".encode()).hexdigest()[:12]
         chunks.append({
-            "chunk_id":       f"{file_id}_{i:04d}_{uid}",
+            "chunk_id":       f"pdf_{file_id}_{i:04d}_{uid}",
             "source":         metadata["source"],
             "doc_type":       metadata["doc_type"],
             "applicable_ay":  ay,

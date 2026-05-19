@@ -222,7 +222,7 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
         "Format your response as:\n\n"
         "**Answer**: <clear direct answer>\n"
         "**Details**: <detailed explanation with specific references>\n"
-        "**Sources**: <list each source [N] used with a brief quote from it>"
+        "**Sources**: <list each source [N] used, state the document name and page number (if available), and quote the specific sentence or paragraph it references>"
     )
     prompt = f"Context:\n{ctx}\n\nQuestion: {query}\n\nResponse:"
 

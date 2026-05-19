@@ -44,12 +44,11 @@ def load_chunks(path: Path) -> list[dict]:
     Sources: rag_output/chunks/ (web), rag_output/pdf_chunks/ (PDFs), rag_output/ (combined).
     Deduplicates by chunk_id so re-running never double-embeds.
     """
-    # Directories to search (order matters for priority)
     search_dirs = [
-        path.parent.parent / "rag_output" / "chunks",         # web scraped
-        path.parent.parent / "rag_output" / "pdf_chunks",      # PDF ingested
-        path.parent.parent / "rag_output" / "combined",        # pre-combined
-        path.parent,                                            # top-level rag_output
+        path.parent.parent / "chunks",         # web scraped and PDF chunks
+        path.parent.parent / "pdf_chunks",      # PDF ingested (legacy)
+        path.parent,                            # pre-combined
+        path.parent.parent,                     # top-level rag_output
     ]
 
     chunks: list[dict] = []

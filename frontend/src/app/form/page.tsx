@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import TaxSlabVisualizer from "@/components/TaxSlabVisualizer";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -635,6 +636,11 @@ function FormPageInner() {
         <div className="glass-card mb-4 px-6 py-4 flex justify-between items-center border border-purple-500/20">
           <span className="font-bold text-slate-200 text-sm uppercase tracking-wider">Taxable Income (GTI − Deductions)</span>
           <span className="text-xl font-bold text-purple-300 tabular-nums">{rupee(Number(tc.taxable_income || 0))}</span>
+        </div>
+
+        {/* ── TAX SLAB VISUALIZATION ─────────────────────────────────────── */}
+        <div className="mb-4">
+          <TaxSlabVisualizer income={Number(tc.taxable_income || 0)} regime="new" />
         </div>
 
         {/* ── TAX COMPUTATION ────────────────────────────────────────────── */}
