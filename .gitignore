@@ -30,9 +30,12 @@ __pycache__/
 
 # Project specific
 uploads/
-knowledge-base/rag_output/
-knowledge-base/vector_store/
+rag_output/
+vector_store/
 knowledge-base/pdfs/
+agent-orchestrator/filled_forms/
+server_logs.txt
+.gemini/
 
 # Parse cache (auto-created at runtime, contains user PII)
 uploads/cache/
