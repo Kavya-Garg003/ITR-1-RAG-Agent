@@ -2,7 +2,7 @@
 ITR-1 LangGraph Agent Pipeline
 ================================
 State machine:
-  fill_form → compute_tax → validate → score_confidence → explain → done
+  fill_form → compare_regimes → validate → score_confidence → explain → done
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from shared.llm_client import get_llm as _get_llm_factory
 
 sys.path.insert(0, str(Path(__file__).parent.parent))  # /app in Docker, project root locally
 from shared.itr1_schema import ITR1Form, TDSEntry, TaxRegime
-from shared.tax_utils import compute_tax_2025
+from shared.tax_utils import compute_tax, compare_regimes, enforce_deduction_limits
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -237,10 +237,10 @@ def node_fill_form(state: AgentState) -> dict:
 
     for bank in bank_docs:
         d = bank["data"]
-        total_savings_interest += float(d.get("total_savings_interest", 0) or 0)
-        total_fd_interest      += float(d.get("total_fd_interest", 0) or 0)
-        total_bank_tds         += float(d.get("total_tds_deducted", 0) or 0)
-        total_salary_credits   += float(d.get("total_salary_credits", 0) or 0)
+        total_savings_interest += float(d.get("total_savings_interest") or d.get("savings_interest_earned") or 0)
+        total_fd_interest      += float(d.get("total_fd_interest") or d.get("fd_interest_earned") or 0)
+        total_bank_tds         += float(d.get("total_tds_deducted") or d.get("tds_on_interest") or 0)
+        total_salary_credits   += float(d.get("total_salary_credits") or 0)
 
         # ── Personal info from bank statement header ────────────────────────
         if not form.personal_info.bank_account_number and d.get("account_number"):
@@ -306,56 +306,113 @@ def node_fill_form(state: AgentState) -> dict:
         "itr1_form":        json.loads(form.model_dump_json()),
         "confidence_scores": conf_scores,
         "audit_trail":      audit,
-        "step":             "compute_tax",
+        "step":             "compare_regimes",
     }
 
 
-# ── Node 2: Compute Tax ────────────────────────────────────────────────────────
+# ── Node 2: Compare Regimes ───────────────────────────────────────────────────
 
-def node_compute_tax(state: AgentState) -> dict:
+def node_compare_regimes(state: AgentState) -> dict:
     form_data = state["itr1_form"]
     ay        = state.get("ay", "AY2025-26")
+    audit = list(state.get("audit_trail", []))
 
-    gti       = form_data["tax_computation"]["gross_total_income"]
-    ded_80ccd2 = form_data["deductions"].get("sec_80ccd_2", 0)
+    salary = form_data["salary_income"]
+    std_ded_old = salary.get("standard_deduction_16ia", 50000.0) or 50000.0
+
+    # gti in form_data is net salary (gross salary - exempt - standard deduction - prof tax)
+    # plus house property plus other sources.
+    # To reconstruct the gross income before standard deduction for compare_regimes:
+    gti = form_data["tax_computation"]["gross_total_income"]
+    gross_total_income_for_comparison = gti + std_ded_old
+
+    # Deductions old includes Chapter VI-A deductions and standard deduction
+    ded = form_data["deductions"]
+    limits = enforce_deduction_limits(ded, ay=ay)
+    total_deductions_old = limits["total"] + std_ded_old
+
     total_tds  = sum(t.get("tds_deducted", 0) for t in form_data.get("tds_details", []))
     bank_tds   = form_data["tax_computation"].get("tds_from_bank", 0)
     all_tds    = total_tds + bank_tds
 
-    # Taxable income = GTI - 80CCD(2) (only deduction allowed under new regime)
-    taxable_income = max(0, gti - ded_80ccd2)
+    comparison = compare_regimes(
+        gross_total_income=gross_total_income_for_comparison,
+        deductions_old=total_deductions_old,
+        tds_deducted=all_tds,
+        ay=ay
+    )
 
-    tax_breakdown = compute_tax_2025(taxable_income=taxable_income, ay=ay)
+    recommended = comparison["recommended_regime"]
+    old_total = comparison["old_regime"]["total_tax"]
+    new_total = comparison["new_regime"]["total_tax"]
 
+    # Fill in the form_data["tax_computation"] based on the recommended regime:
     tc = form_data["tax_computation"]
-    tc["regime"]                = "new"
-    tc["total_deductions"]      = ded_80ccd2
-    tc["taxable_income"]        = taxable_income
-    tc["tax_before_rebate"]     = tax_breakdown["tax_before_rebate"]
-    tc["rebate_87a"]            = tax_breakdown["rebate_87a"]
-    tc["tax_after_rebate"]      = tax_breakdown["tax_after_rebate"]
-    tc["surcharge"]             = tax_breakdown["surcharge"]
-    tc["health_education_cess"] = tax_breakdown["health_education_cess"]
-    tc["total_tax_liability"]   = tax_breakdown["total_tax"]
+    tc["regime"] = recommended
+
+    if recommended == "new":
+        breakdown = comparison["new_regime"]
+        # For new regime, taxable_income is gross_total_income - new_regime_standard_deduction - 80CCD(2)
+        # Note that the breakdown["taxable_income"] already has standard deduction subtracted!
+        # But wait! If we have 80CCD(2) employer NPS contribution, it should be subtracted from new regime taxable income!
+        # Let's subtract 80CCD(2):
+        taxable = max(0.0, breakdown["taxable_income"] - ded.get("sec_80ccd_2", 0.0))
+        # If we subtracted 80CCD(2), we must re-compute new regime tax on this taxable income!
+        if ded.get("sec_80ccd_2", 0.0) > 0:
+            breakdown = compute_tax(taxable, regime="new", ay=ay)
+        tc["taxable_income"] = breakdown["taxable_income"]
+        tc["total_deductions"] = ded.get("sec_80ccd_2", 0.0)
+    else:
+        breakdown = comparison["old_regime"]
+        # Under old regime, standard deduction and Chapter VI-A deductions are already subtracted!
+        tc["taxable_income"] = breakdown["taxable_income"]
+        tc["total_deductions"] = total_deductions_old
+
+    tc["tax_before_rebate"]     = breakdown["tax_before_rebate"]
+    tc["rebate_87a"]            = breakdown["rebate_87a"]
+    tc["tax_after_rebate"]      = breakdown["tax_after_rebate"]
+    tc["surcharge"]             = breakdown["surcharge"]
+    tc["health_education_cess"] = breakdown["health_education_cess"]
+    tc["total_tax_liability"]   = breakdown["total_tax"]
     tc["tds_deducted"]          = all_tds
-    tc["total_taxes_paid"]      = all_tds   # could include advance tax later
+    tc["total_taxes_paid"]      = all_tds
 
-    net = tax_breakdown["total_tax"] - all_tds
-    tc["tax_payable"] = max(0, net)
-    tc["refund"]      = max(0, -net)
+    net = breakdown["total_tax"] - all_tds
+    tc["tax_payable"] = max(0.0, net)
+    tc["refund"]      = max(0.0, -net)
 
-    audit = list(state.get("audit_trail", []))
+    # Set these on form_data dict for test_pipeline expectations!
+    form_data["regime_recommendation"] = recommended
+    form_data["regime_tax_old"] = old_total
+    form_data["regime_tax_new"] = new_total
+
+    # Let's update state["regime_analysis"] too!
+    regime_analysis = {
+        "recommended_regime": recommended,
+        "saving": comparison["saving"],
+        "reasoning": comparison["reasoning"],
+        "old_regime_tax": old_total,
+        "new_regime_tax": new_total,
+    }
+
     audit.append({
-        "timestamp":     datetime.utcnow().isoformat(),
-        "node":          "compute_tax",
-        "action":        f"Tax computed (new regime). Total tax: ₹{tax_breakdown['total_tax']:,.0f}",
-        "taxable_income": taxable_income,
-        "total_tax":     tax_breakdown["total_tax"],
-        "tds":           all_tds,
+        "timestamp": datetime.utcnow().isoformat(),
+        "node": "compare_regimes",
+        "action": f"Compared regimes. Recommended: {recommended}. Saving: ₹{comparison['saving']:,.0f}",
+        "recommended_regime": recommended,
+        "saving": comparison["saving"],
+        "taxable_income": tc["taxable_income"],
+        "total_tax": tc["total_tax_liability"],
+        "tds": all_tds,
         "refund_or_payable": "refund" if net < 0 else "payable",
     })
 
-    return {"itr1_form": form_data, "audit_trail": audit, "step": "validate"}
+    return {
+        "itr1_form": form_data,
+        "regime_analysis": regime_analysis,
+        "audit_trail": audit,
+        "step": "validate"
+    }
 
 
 # ── Node 3: Validate ──────────────────────────────────────────────────────────
@@ -590,14 +647,14 @@ def _route_after_validate(state: AgentState) -> str:
 def build_itr_graph() -> StateGraph:
     g = StateGraph(AgentState)
     g.add_node("fill_form",        node_fill_form)
-    g.add_node("compute_tax",      node_compute_tax)
+    g.add_node("compare_regimes",  node_compare_regimes)
     g.add_node("validate",         node_validate)
     g.add_node("score_confidence", node_score_confidence)
     g.add_node("explain",          node_explain)
 
     g.set_entry_point("fill_form")
-    g.add_edge("fill_form",        "compute_tax")
-    g.add_edge("compute_tax",      "validate")
+    g.add_edge("fill_form",        "compare_regimes")
+    g.add_edge("compare_regimes",  "validate")
     g.add_conditional_edges("validate", _route_after_validate, {"score_confidence": "score_confidence"})
     g.add_edge("score_confidence", "explain")
     g.add_edge("explain",          END)

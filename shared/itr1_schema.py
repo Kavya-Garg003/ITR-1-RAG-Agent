@@ -208,9 +208,17 @@ class Deductions(BaseModel):
     total_deductions:  float = 0.0   # Under new regime: only 80CCD(2)
 
     def compute(self, regime: TaxRegime = TaxRegime.NEW):
-        # New regime: only 80CCD(2) counts toward tax reduction
-        # We still STORE all values for display on the form, but total_deductions = 80CCD(2) only
-        self.total_deductions = self.sec_80ccd_2
+        # New regime: only 80CCD(2) counts toward tax reduction (handled separately in computation)
+        # So total of general Chapter VI-A deductions is 0
+        if regime == TaxRegime.NEW or regime == "new":
+            self.total_deductions = 0.0
+        else:
+            self.total_deductions = (
+                self.sec_80c + self.sec_80ccc + self.sec_80ccd_1 + self.sec_80ccd_1b +
+                self.sec_80d + self.sec_80dd + self.sec_80ddb + self.sec_80e +
+                self.sec_80ee + self.sec_80gg + self.sec_80ggc + self.sec_80tta +
+                self.sec_80ttb + self.sec_80u
+            )
 
 
 # ── Section: TDS Details (Schedule TDS1) ─────────────────────────────────────

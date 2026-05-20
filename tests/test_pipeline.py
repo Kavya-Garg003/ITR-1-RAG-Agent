@@ -70,7 +70,7 @@ def make_initial_state(docs=None):
     return {
         "session_id":        "test-session",
         "ay":                "AY2024-25",
-        "raw_documents":     docs or SAMPLE_DOCS,
+        "raw_documents":     SAMPLE_DOCS if docs is None else docs,
         "itr1_form":         form,
         "regime_analysis":   {},
         "validation_flags":  [],
