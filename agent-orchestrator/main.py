@@ -178,13 +178,12 @@ async def chat_query(req: ChatRequest):
             f"Use this data strictly if their question explicitly pertains to their documents or tax specifics.\n"
             f"-----------------------------------\n"
         )
-        question += form_ctx
-
+        
     try:
         async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.post(
                 f"{RAG_URL}/query",
-                json={"question": question, "ay": req.ay, "top_k": 5, "verify": True}
+                json={"question": question, "form_context": form_ctx, "ay": req.ay, "top_k": 5, "verify": True}
             )
             resp.raise_for_status()
             rag_result = resp.json()

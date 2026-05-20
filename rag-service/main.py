@@ -162,13 +162,12 @@ def _mmr(query, index, meta, embed_fn, top_k=5, fetch_k=60, lam=0.6):
         if not remaining:
             break
         if not selected:
-            best = max(remaining, key=lambda i: q_sims[i] + (0.06 if _is_pdf(candidates[i]) else 0))
+            best = max(remaining, key=lambda i: q_sims[i])
         else:
             sel_e  = cand_embs[selected]
             scores = []
             for i in remaining:
-                boost    = 0.06 if _is_pdf(candidates[i]) else 0
-                rel      = q_sims[i] + boost
+                rel      = q_sims[i]
                 red      = float(np.max(cand_embs[i] @ sel_e.T))
                 scores.append((i, lam * rel - (1 - lam) * red))
             best = max(scores, key=lambda x: x[1])[0]
@@ -185,7 +184,7 @@ def _rerank(query, chunks):
         ce     = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         scores = ce.predict([[query, c["text"]] for c in chunks])
         for c, s in zip(chunks, scores):
-            c["_score"] = float(s) + (1.5 if c.get("chunk_id", "").startswith("pdf_") else 0)
+            c["_score"] = float(s)
         chunks.sort(key=lambda x: x.get("_score", 0), reverse=True)
     except Exception as e:
         print(f"Rerank skipped: {e}")
@@ -194,7 +193,7 @@ def _rerank(query, chunks):
 
 # ── LLM answer ─────────────────────────────────────────────────────────────────
 
-def _answer(query: str, chunks: list[dict], ay: str) -> str:
+def _answer(query: str, form_context: str, chunks: list[dict], ay: str) -> str:
     # Build numbered context blocks with clear source labels
     ctx_parts = []
     for i, c in enumerate(chunks, 1):
@@ -225,7 +224,10 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
         "**Details**: <detailed explanation with specific references>\n"
         "**Sources**: <list each source [N] used, state the document name, page number, and the exact Line numbers (e.g., Lines 4-6) it references, and quote the specific sentence>"
     )
-    prompt = f"Context:\n{ctx}\n\nQuestion: {query}\n\nResponse:"
+    prompt = f"Context:\n{ctx}\n"
+    if form_context:
+        prompt += f"{form_context}\n"
+    prompt += f"\nQuestion: {query}\n\nResponse:"
 
     try:
         from shared.llm_client import complete_with_system
@@ -286,6 +288,7 @@ def _verify_answer(question: str, answer: str, chunks: list[dict]) -> dict:
 
 class QueryRequest(BaseModel):
     question: str
+    form_context: str = ""
     ay:       str  = DEFAULT_AY
     top_k:    int  = 7      # increased from 5 for better coverage
     backend:  str  = "huggingface"
@@ -332,7 +335,7 @@ async def query(req: QueryRequest):
     if req.rerank and chunks:
         chunks = _rerank(req.question, chunks)
 
-    answer = _answer(req.question, chunks, req.ay)
+    answer = _answer(req.question, req.form_context, chunks, req.ay)
 
     # Self-verify grounding
     verify_result = {"verified": True, "grounding": []}
