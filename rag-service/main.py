@@ -204,7 +204,8 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
         is_pdf       = c.get("chunk_id", "").startswith("pdf_")
         src_type     = "📄 PDF" if is_pdf else "🌐 Web"
         header       = f"[{i}] {src_type} — {source_label}" + (f" — {section}" if section else "")
-        ctx_parts.append(f"{header}\n{c['text']}")
+        numbered_text = "\n".join(f"Line {idx+1}: {line}" for idx, line in enumerate(c['text'].split('\n')))
+        ctx_parts.append(f"{header}\n{numbered_text}")
     ctx = "\n\n---\n\n".join(ctx_parts)
 
     system = (
@@ -222,7 +223,7 @@ def _answer(query: str, chunks: list[dict], ay: str) -> str:
         "Format your response as:\n\n"
         "**Answer**: <clear direct answer>\n"
         "**Details**: <detailed explanation with specific references>\n"
-        "**Sources**: <list each source [N] used, state the document name and page number (if available), and quote the specific sentence or paragraph it references>"
+        "**Sources**: <list each source [N] used, state the document name, page number, and the exact Line numbers (e.g., Lines 4-6) it references, and quote the specific sentence>"
     )
     prompt = f"Context:\n{ctx}\n\nQuestion: {query}\n\nResponse:"
 
