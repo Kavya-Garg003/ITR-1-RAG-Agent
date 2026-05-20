@@ -502,7 +502,7 @@ function FormPageInner() {
               <span className="text-xs font-semibold bg-green-500/20 text-green-400 px-3 py-1 rounded-full border border-green-500/30">AI-FILLED</span>
             </h1>
             <div className="text-slate-400 mt-1.5 text-sm">
-              AY {String(pi.assessment_year || "2025-26")} · New Tax Regime 2025
+              AY 2025-26 · New Tax Regime 2025
               {pi.first_name && <span className="ml-3 text-slate-300 font-medium">· {[pi.first_name, pi.middle_name, pi.last_name].filter(Boolean).join(" ")}</span>}
               {pi.pan && <span className="ml-2 font-mono text-teal-400 text-xs">{String(pi.pan)}</span>}
             </div>

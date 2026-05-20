@@ -188,8 +188,8 @@ app.get("/api/pipeline/export/:sessionId", authMiddleware, async (req, res) => {
     }
 
     if (format === "excel") {
-      res.setHeader("Content-Disposition", resp.headers.get("content-disposition") || `attachment; filename=ITR1_filled.xlsm`);
-      res.setHeader("Content-Type", resp.headers.get("content-type") || "application/vnd.ms-excel.sheet.macroEnabled.12");
+      res.setHeader("Content-Disposition", resp.headers.get("content-disposition") || `attachment; filename=ITR1_filled.xlsx`);
+      res.setHeader("Content-Type", resp.headers.get("content-type") || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       return resp.body.pipe(res);
     } else if (format === "pdf") {
       res.setHeader("Content-Disposition", resp.headers.get("content-disposition") || `attachment; filename=ITR1_filled.pdf`);
