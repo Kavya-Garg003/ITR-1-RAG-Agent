@@ -17,9 +17,8 @@
 7. [Setup — exact steps to run](#7-setup-exact-steps)
 8. [What you need to provide](#8-what-you-need-to-provide)
 9. [Limitations — what it does and does not do](#9-limitations)
-10. [Interview cheat sheet](#10-interview-cheat-sheet)
-11. [Comprehensive Feature & Microservice Matrix](#11-comprehensive-feature--microservice-matrix)
-12. [Testing Architecture & System Metrics](#12-testing-architecture--system-metrics)
+10. [Comprehensive Feature & Microservice Matrix](#11-comprehensive-feature--microservice-matrix)
+11. [Testing Architecture & System Metrics](#12-testing-architecture--system-metrics)
 
 ---
 
@@ -644,27 +643,8 @@ The websites (incometax.gov.in pages, ClearTax) are scraped automatically by `sc
 
 ---
 
-## 10. Interview cheat sheet
 
-| Question | Answer |
-|----------|--------|
-| Why microservices? | Different scaling profiles — parser runs once per upload, RAG runs per query, agent runs per pipeline trigger. Language heterogeneity is justified: Python for ML ecosystem, Node for async I/O orchestration |
-| Why Python for RAG/AI? | LangGraph, pdfplumber, FAISS, sentence-transformers — no equivalent in Node. Would lose 80% of ML tooling |
-| Why Node.js for gateway? | Event-driven non-blocking I/O is the correct tool for orchestrating async calls to multiple Python microservices. Justifiable, not arbitrary |
-| Why FAISS not Pinecone? | FAISS locally (zero cost, full control, fast for demo). Pinecone for production scale (managed, auto-scaling). Shows you know the tradeoff |
-| How do you prevent hallucination? | RAG grounds answers in retrieved context. Confidence scoring flags fields not found in documents. Validator catches tax rule violations. Explain node uses context from state, not free generation |
-| How is it AY-updatable? | Versioned FAISS namespaces (AY2025-26, AY2025-26). New AY: ingest new PDFs + re-run embedder → only RAG service redeploys. tax_utils.py AY_CONFIG dict has one entry per year |
-| What does LangGraph add over raw prompting? | Models the pipeline as a state machine — each node has a defined contract (input state, output state). Resumable, testable in isolation, clear separation of concerns. Visualisable as a graph for viva |
-| Why MMR retrieval? | Prevents 5 near-identical chunks being returned for a query. Balances relevance (similarity to query) with diversity (dissimilarity to already-selected chunks). Lambda=0.6 weights relevance higher |
-| What is the cross-encoder for? | Re-ranks the 5 MMR results with a more expensive but accurate model. Bi-encoder (used for FAISS) is fast but approximate. Cross-encoder sees query+document together, much better precision |
-| How does the tax computation work? | Deterministic Python math in tax_utils.py. NOT LLM inference. Exact statutory slab rates, 4% cess, marginal relief for surcharge, 3-component HRA minimum. Tested with 38 unit tests |
-| What if Form 16 is scanned/image-based? | Parser returns parse_confidence < 0.5 and warns user. Fix: run `ocrmypdf scanned.pdf output.pdf` before uploading, which adds a text layer |
-| How is the validator different from the form filler? | Validator is a separate LangGraph node that runs after filling, checks cross-field rules (HRA + 80GG, 80TTA + 80TTB, income cap), and produces structured ValidationFlag objects with severities |
-| Why did we combine Excel sheets and how? | The official government ITR-1 utility Excel (.xlsm) contains multiple tabs that are error-prone and tedious to review. We used openpyxl to fill the fields in the official layout (resolving merged-cell read-only issues by writing to the top-left coordinate of any merged range), and then programmatically copied the cell values, fonts, border styles, fills, alignments, and column/row dimensions of all core sheets into a single "Combined ITR-1" sheet. This provides a unified view in the exact official layout without needing background COM/Excel execution, making it fast and 100% cross-platform. |
-
----
-
-## 11. Comprehensive Feature & Microservice Matrix
+## 10. Comprehensive Feature & Microservice Matrix
 
 The application is built on a **5-tier decentralized microservice architecture** communicating over lightweight JSON-RPC/HTTP REST interfaces. Each service is fully decoupled:
 
@@ -678,7 +658,7 @@ The application is built on a **5-tier decentralized microservice architecture**
 
 ---
 
-## 12. Testing Architecture & System Metrics
+## 11. Testing Architecture & System Metrics
 
 ### Test Suite Structure
 
